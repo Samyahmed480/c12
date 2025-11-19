@@ -13,7 +13,8 @@
         <!-- Sidebar Navigation -->
         <aside class="sidebar">
             <div class="logo">
-                <h2>نظام المختبر</h2>
+                <img id="sidebarLogo" src="images/logo.png" alt="شعار المختبر" style="display: none;">
+                <h2 id="sidebarLabName">نظام المختبر</h2>
             </div>
             <nav class="menu">
                 <a href="#dashboard" class="menu-item active">لوحة التحكم</a>
@@ -22,6 +23,8 @@
                 <a href="#results" class="menu-item">كتابة النتائج</a>
                 <a href="#test-definitions" class="menu-item">أنواع التحاليل</a>
                 <a href="#inventory" class="menu-item" id="inventory-nav">إدارة المخزون</a>
+                <a href="#consumed" class="menu-item" id="consumed-nav">المستهلكات</a>
+                <a href="#settings" class="menu-item" id="settings-nav">الإعدادات</a>
                 <a href="#" id="logoutBtn" class="menu-item">تسجيل الخروج</a>
             </nav>
         </aside>
@@ -76,6 +79,7 @@
             <section id="patients" class="content-section">
                 <h2>إضافة مريض جديد</h2>
                 <form id="patientForm">
+                    <input type="text" id="patientNationalId" placeholder="الرقم الوطني" required>
                     <input type="text" id="patientName" placeholder="اسم المريض" required>
                     <input type="number" id="patientAge" placeholder="العمر" required>
                     <select id="patientGender" required>
@@ -96,12 +100,38 @@
                     <thead>
                         <tr>
                             <th>المعرف</th>
+                            <th>الرقم الوطني</th>
                             <th>الاسم</th>
                             <th>العمر</th>
                             <th>الجنس</th>
                             <th>الهاتف</th>
                             <th>السجل الطبي</th>
                             <th>إجراءات</th>
+                            <th>الملف الشخصي</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </section>
+
+            <!-- Patient Profile Section -->
+            <section id="patient-profile" class="content-section">
+                <div id="patient-profile-header">
+                    <button id="backToPatientsBtn" class="back-btn">➡️ العودة لقائمة المرضى</button>
+                </div>
+                <div id="patient-profile-info">
+                    <!-- Patient details will be injected here -->
+                </div>
+                <hr>
+                <h2>تاريخ التحاليل</h2>
+                <table id="patientProfileTestsTable">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>نوع الفحص</th>
+                            <th>تاريخ الطلب</th>
+                            <th>الحالة</th>
+                            <th>طباعة</th>
                         </tr>
                     </thead>
                     <tbody></tbody>
@@ -145,9 +175,8 @@
                     <select id="resultTestId" required>
                         <option value="" disabled selected>اختر فحصًا لإضافة نتيجة</option>
                     </select>
-                    <input type="text" id="resultRefNum" placeholder="النطاق المرجعي (يظهر تلقائياً)" readonly>
-                    <textarea id="resultDetails" placeholder="اكتب تفاصيل ونتيجة التحليل هنا..." required></textarea>
-                    <textarea id="resultNotes" placeholder="ملاحظات الطبيب (اختياري)"></textarea>
+                    <div id="result-parameters-container" class="parameters-container"></div>
+                    <textarea id="resultNotes" placeholder="ملاحظات عامة (اختياري)"></textarea>
                     <button type="submit">حفظ النتيجة النهائية</button>
                 </form>
                 <hr>
@@ -159,10 +188,9 @@
                     <thead>
                         <tr>
                             <th>معرف النتيجة</th>
-                            <th>معرف الفحص</th>
-                            <th>تفاصيل النتيجة</th>
-                            <th>ملاحظات</th>
-                            <th>النطاق المرجعي</th>
+                            <th>اسم المريض</th>
+                            <th>نوع الفحص</th>
+                            <th>ملاحظات عامة</th>
                             <th>تاريخ الإدخال</th>
                             <th>إجراءات / طباعة</th>
                         </tr>
@@ -175,15 +203,16 @@
             <section id="test-definitions" class="content-section">
                 <h2>إضافة نوع تحليل جديد</h2>
                 <form id="testDefinitionForm">
-                    <input type="text" id="testDefName" placeholder="اسم التحليل (مثال: CBC)" required>
-                    <input type="text" id="testDefRefRange" placeholder="النطاق المرجعي (مثال: 4.5-5.5)" required>
+                    <input type="text" id="testDefName" placeholder="اسم الفحص (مثال: صورة دم كاملة)" required>
                     
-                    <div class="consumed-materials-container">
-                        <h4>المواد المستهلكة المطلوبة للتحليل</h4>
-                        <div class="add-material-controls">
-                            <select id="testDefMaterialSelect"></select>
-                            <button type="button" id="addTestDefMaterialBtn" class="add-material-btn">إضافة</button>
-                        </div>
+                    <div class="sub-form-container">
+                        <h4>التحاليل الفرعية (Parameters)</h4>
+                        <div id="testDefParametersContainer"></div>
+                        <button type="button" id="addTestDefParamBtn" class="add-btn">إضافة تحليل فرعي</button>
+                    </div>
+                    <div class="sub-form-container">
+                        <h4>المواد المستهلكة</h4>
+                        <div id="testDefMaterialSelectContainer" class="add-material-controls"></div>
                         <div id="testDefMaterialsList"></div>
                     </div>
                     
@@ -194,8 +223,8 @@
                 <table id="testDefinitionsTable">
                     <thead>
                         <tr>
-                            <th>اسم التحليل</th>
-                            <th>النطاق المرجعي</th>
+                            <th>اسم الفحص</th>
+                            <th>التحالiles الفرعية</th>
                             <th>المواد المستهلكة</th>
                             <th>إجراءات</th>
                         </tr>
@@ -224,6 +253,7 @@
                         <tr>
                             <th>المعرف</th>
                             <th>اسم المادة</th>
+                            <th>الكمية المستهلكة</th>
                             <th>الكمية الحالية (الوحدة)</th>
                             <th>حد إعادة الطلب</th>
                             <th>إجراءات</th>
@@ -231,6 +261,45 @@
                     </thead>
                     <tbody></tbody>
                 </table>
+            </section>
+
+            <!-- Consumed Log Section -->
+            <section id="consumed" class="content-section">
+                <div class="table-header">
+                    <h2>سجل المواد المستهلكة</h2>
+                    <button id="exportConsumedBtn" class="export-btn">تصدير إلى Excel</button>
+                </div>
+                <table id="consumedTable">
+                    <thead>
+                        <tr>
+                            <th>اسم المادة</th>
+                            <th>الكمية المستهلكة</th>
+                            <th>نوع الفحص</th>
+                            <th>معرف الفحص</th>
+                            <th>تاريخ الاستهلاك</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </section>
+
+            <!-- Settings Section -->
+            <section id="settings" class="content-section">
+                <h2>إعدادات النظام والمختبر</h2>
+                <form id="settingsForm">
+                    <input type="text" id="labName" placeholder="اسم المختبر" required>
+                    <input type="text" id="labAddress" placeholder="عنوان المختبر">
+                    <input type="tel" id="labPhone" placeholder="رقم هاتف المختبر">
+                    <input type="email" id="labEmail" placeholder="البريد الإلكتروني للمختبر">
+                    
+                    <div class="logo-upload-container">
+                        <label for="labLogoInput">شعار المختبر (يفضل أن يكون مربعاً):</label>
+                        <input type="file" id="labLogoInput" accept="image/*">
+                        <img id="logoPreview" src="" alt="معاينة الشعار" style="max-width: 150px; max-height: 150px; margin-top: 10px; display: none;">
+                    </div>
+
+                    <button type="submit">حفظ الإعدادات</button>
+                </form>
             </section>
 
         </main>

@@ -52,6 +52,17 @@ body {
     margin-bottom: 30px;
 }
 
+.sidebar .logo img {
+    max-width: 80px;
+    max-height: 80px;
+    border-radius: 50%;
+    margin-bottom: 10px;
+    object-fit: cover;
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+}
+
 .sidebar .menu a {
     display: block;
     color: var(--sidebar-text);
@@ -315,6 +326,42 @@ tbody tr.low-stock {
 .action-btn.edit { background-color: var(--primary-color); }
 .action-btn.delete { background-color: var(--danger-color); }
 .action-btn.print { background-color: var(--success-color); }
+.action-btn.view { background-color: #f39c12; } /* Orange color for view */
+
+/* Patient Profile Styles */
+#patient-profile-header {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 20px;
+}
+
+.back-btn {
+    background-color: #7f8c8d;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+}
+
+.back-btn:hover {
+    background-color: #95a5a6;
+}
+
+#patient-profile-info {
+    background-color: var(--card-bg);
+    padding: 20px;
+    border-radius: 8px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 15px;
+    font-size: 1.1em;
+}
+
+#patient-profile-info p {
+    margin: 5px 0;
+}
 
 /* Hide edit/delete buttons for non-admin users */
 body.user-role .action-btn.edit,
@@ -324,7 +371,9 @@ body.user-role .action-btn.delete {
 
 /* Hide sensitive nav links for non-admin users */
 body.user-role #inventory-nav,
-body.user-role a[href="#test-definitions"] {
+body.user-role a[href="#test-definitions"],
+body.user-role #consumed-nav,
+body.user-role #settings-nav {
     display: none;
 }
 
@@ -414,6 +463,49 @@ body.user-role a[href="#test-definitions"] {
     padding: 8px 15px;
 }
 
+.logo-upload-container,
+.sub-form-container {
+    grid-column: 1 / -1;
+    border: 1px solid var(--border-color);
+    padding: 15px;
+    border-radius: 5px;
+}
+
+.add-btn {
+    background-color: var(--success-color) !important;
+    color: white;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 5px;
+    cursor: pointer;
+    width: auto;
+    grid-column: unset;
+    margin-top: 10px;
+}
+
+.parameter-entry-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr auto;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.parameter-entry-row button {
+    background-color: var(--danger-color) !important;
+    padding: 8px 12px;
+}
+
+#result-parameters-container {
+    grid-column: 1 / -1;
+}
+
+#result-parameters-container .parameter-entry-row {
+    grid-template-columns: 1.5fr 1fr 0.5fr 1fr;
+    padding: 10px;
+    border-bottom: 1px solid var(--border-color);
+}
+
 /* Styles for the printable report */
 #print-report-container {
     display: none; /* Hidden by default */
@@ -443,21 +535,34 @@ body.user-role a[href="#test-definitions"] {
     }
 
     .report-header {
-        text-align: center;
+        display: flex;
+        align-items: center;
+        gap: 20px;
         border-bottom: 2px solid #000;
         padding-bottom: 10px;
         margin-bottom: 20px;
     }
 
-    .report-header img {
-        max-width: 150px;
-        max-height: 80px;
-        margin-bottom: 10px;
+    .report-header-logo img {
+        max-width: 100px;
+        max-height: 100px;
+    }
+
+    .report-header-info {
+        text-align: right;
     }
 
     .report-header h2 {
         margin: 0;
         font-size: 24px;
+    }
+    .report-header-info p {
+        margin: 5px 0 0;
+    }
+    .report-title {
+        text-align: center;
+        margin-bottom: 20px;
+        font-size: 22px;
     }
 
     .report-patient-info table {
@@ -471,6 +576,20 @@ body.user-role a[href="#test-definitions"] {
         padding: 8px;
         border: 1px solid #ccc;
         text-align: right;
+    }
+
+    .report-results-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 10px;
+    }
+    .report-results-table th, .report-results-table td {
+        border: 1px solid #999;
+        padding: 8px;
+        text-align: right;
+    }
+    .report-results-table thead {
+        background-color: #f2f2f2;
     }
 
     .report-results-section {
