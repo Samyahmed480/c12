@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <title>نظام إدارة المختبر</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div class="container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="logo">
+                <h2>نظام المختبر</h2>
+            </div>
+            <nav class="menu">
+                <a href="#dashboard" class="menu-item active">لوحة التحكم</a>
+                <a href="#patients" class="menu-item">إدارة المرضى</a>
+                <a href="#tests" class="menu-item">إدارة الفحوصات</a>
+                <a href="#results" class="menu-item">كتابة النتائج</a>
+                <a href="#test-definitions" class="menu-item">أنواع التحاليل</a>
+                <a href="#inventory" class="menu-item" id="inventory-nav">إدارة المخزون</a>
+                <a href="#" id="logoutBtn" class="menu-item">تسجيل الخروج</a>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+          <header>
+              <h1>لوحة التحكم</h1>
+              <div class="header-right">
+                  <input type="text" id="searchInput" placeholder="ابحث في الجدول الحالي..." class="search-input">
+                  <button id="theme-toggle" class="theme-btn">🌙</button>
+              </div>
+          </header>
+
+            <!-- Dashboard Section -->
+            <section id="dashboard" class="content-section active">
+                <div class="cards">
+                    <div class="card">
+                        <h3>إجمالي المرضى</h3>
+                        <p id="totalPatients">0</p>
+                    </div>
+                    <div class="card">
+                        <h3>الفحوصات المعلقة</h3>
+                        <p id="pendingTests">0</p>
+                    </div>
+                    <div class="card">
+                        <h3>إجمالي النتائج</h3>
+                        <p id="totalResults">0</p>
+                    </div>
+                    <div class="card">
+                        <h3>أنواع التحاليل</h3>
+                        <p id="totalTestDefs">0</p>
+                    </div>
+                    <div class="card">
+                        <h3>المخزون المنخفض</h3>
+                        <p id="lowStockItems">0</p>
+                    </div>
+                </div>
+                <div class="charts-container">
+                    <div class="chart-card">
+                        <h3>حالة الفحوصات</h3>
+                        <canvas id="testsStatusChart"></canvas>
+                    </div>
+                    <div class="chart-card">
+                        <h3>الفحوصات حسب النوع</h3>
+                        <canvas id="testsByTypeChart"></canvas>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Patients Section -->
+            <section id="patients" class="content-section">
+                <h2>إضافة مريض جديد</h2>
+                <form id="patientForm">
+                    <input type="text" id="patientName" placeholder="اسم المريض" required>
+                    <input type="number" id="patientAge" placeholder="العمر" required>
+                    <select id="patientGender" required>
+                        <option value="" disabled selected>اختر الجنس</option>
+                        <option value="ذكر">ذكر</option>
+                        <option value="أنثى">أنثى</option>
+                    </select>
+                    <input type="tel" id="patientPhone" placeholder="رقم الهاتف">
+                    <textarea id="patientRecord" placeholder="السجل الطبي"></textarea>
+                    <button type="submit">إضافة مريض</button>
+                </form>
+                <hr>
+                <div class="table-header">
+                    <h2>قائمة المرضى</h2>
+                    <button id="exportPatientsBtn" class="export-btn">تصدير إلى Excel</button>
+                </div>
+                <table id="patientsTable">
+                    <thead>
+                        <tr>
+                            <th>المعرف</th>
+                            <th>الاسم</th>
+                            <th>العمر</th>
+                            <th>الجنس</th>
+                            <th>الهاتف</th>
+                            <th>السجل الطبي</th>
+                            <th>إجراءات</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </section>
+
+            <!-- Tests Section -->
+            <section id="tests" class="content-section">
+                <h2>تسجيل طلب فحص جديد</h2>
+                <form id="testForm">
+                    <select id="testPatientId" required>
+                        <option value="" disabled selected>اختر مريضاً</option>
+                    </select>
+                    <div id="testTypesContainer" class="checkbox-container"></div>
+                    <button type="submit">إضافة الفحوصات المحددة</button>
+                </form>
+                <hr>
+                <div class="table-header">
+                    <h2>قائمة الفحوصات</h2>
+                    <button id="exportTestsBtn" class="export-btn">تصدير إلى Excel</button>
+                </div>
+                <table id="testsTable">
+                    <thead>
+                        <tr>
+                            <th>معرف الفحص</th>
+                            <th>اسم المريض</th>
+                            <th>نوع الفحص</th>
+                            <th>تاريخ الطلب</th>
+                            <th>الحالة</th>
+                            <th>إجراءات</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </section>
+
+            <!-- Results Section -->
+            <section id="results" class="content-section">
+                <h2>كتابة نتيجة التحليل</h2>
+                <form id="resultForm">
+                    <select id="resultTestId" required>
+                        <option value="" disabled selected>اختر فحصًا لإضافة نتيجة</option>
+                    </select>
+                    <input type="text" id="resultRefNum" placeholder="النطاق المرجعي (يظهر تلقائياً)" readonly>
+                    <textarea id="resultDetails" placeholder="اكتب تفاصيل ونتيجة التحليل هنا..." required></textarea>
+                    <textarea id="resultNotes" placeholder="ملاحظات الطبيب (اختياري)"></textarea>
+                    <button type="submit">حفظ النتيجة النهائية</button>
+                </form>
+                <hr>
+                <div class="table-header">
+                    <h2>قائمة النتائج المسجلة</h2>
+                    <button id="exportResultsBtn" class="export-btn">تصدير إلى Excel</button>
+                </div>
+                <table id="resultsTable">
+                    <thead>
+                        <tr>
+                            <th>معرف النتيجة</th>
+                            <th>معرف الفحص</th>
+                            <th>تفاصيل النتيجة</th>
+                            <th>ملاحظات</th>
+                            <th>النطاق المرجعي</th>
+                            <th>تاريخ الإدخال</th>
+                            <th>إجراءات / طباعة</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </section>
+
+            <!-- Test Definitions Section -->
+            <section id="test-definitions" class="content-section">
+                <h2>إضافة نوع تحليل جديد</h2>
+                <form id="testDefinitionForm">
+                    <input type="text" id="testDefName" placeholder="اسم التحليل (مثال: CBC)" required>
+                    <input type="text" id="testDefRefRange" placeholder="النطاق المرجعي (مثال: 4.5-5.5)" required>
+                    
+                    <div class="consumed-materials-container">
+                        <h4>المواد المستهلكة المطلوبة للتحليل</h4>
+                        <div class="add-material-controls">
+                            <select id="testDefMaterialSelect"></select>
+                            <button type="button" id="addTestDefMaterialBtn" class="add-material-btn">إضافة</button>
+                        </div>
+                        <div id="testDefMaterialsList"></div>
+                    </div>
+                    
+                    <button type="submit">حفظ نوع التحليل</button>
+                </form>
+                <hr>
+                <h2>قائمة أنواع التحاليل</h2>
+                <table id="testDefinitionsTable">
+                    <thead>
+                        <tr>
+                            <th>اسم التحليل</th>
+                            <th>النطاق المرجعي</th>
+                            <th>المواد المستهلكة</th>
+                            <th>إجراءات</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </section>
+
+            <!-- Inventory Section -->
+            <section id="inventory" class="content-section">
+                <h2>إضافة مادة جديدة للمخزون</h2>
+                <form id="inventoryForm">
+                    <input type="text" id="itemName" placeholder="اسم المادة" required>
+                    <input type="text" id="itemUnit" placeholder="وحدة القياس (ml, kit, ...)" required>
+                    <input type="number" id="currentStock" placeholder="الكمية الحالية" required>
+                    <input type="number" id="reorderLevel" placeholder="حد إعادة الطلب" required>
+                    <button type="submit">إضافة للمخزون</button>
+                </form>
+                <hr>
+                <div class="table-header">
+                    <h2>حالة المخزون</h2>
+                    <button id="exportInventoryBtn" class="export-btn">تصدير إلى Excel</button>
+                </div>
+                <table id="inventoryTable">
+                    <thead>
+                        <tr>
+                            <th>المعرف</th>
+                            <th>اسم المادة</th>
+                            <th>الكمية الحالية (الوحدة)</th>
+                            <th>حد إعادة الطلب</th>
+                            <th>إجراءات</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- Edit Modal -->
+    <div id="editModal" class="modal">
+        <div class="modal-content">
+            <span class="close-btn">&times;</span>
+            <h2 id="modalTitle">تعديل السجل</h2>
+            <form id="editForm"></form>
+        </div>
+    </div>
+
+    <!-- Print Report Container -->
+    <div id="print-report-container">
+        <div id="report-content">
+            <!-- Content will be injected here by JavaScript -->
+        </div>
+    </div>
+
+    <!-- Login Modal -->
+    <div id="loginModal" class="modal">
+        <div class="modal-content">
+            <h2>تسجيل الدخول</h2>
+            <p>الرجاء إدخال كلمة مرور المدير للوصول الكامل، أو الدخول كزائر بصلاحيات محدودة.</p>
+            <form id="loginForm">
+                <input type="password" id="passwordInput" placeholder="كلمة المرور" autofocus>
+                <button type="submit">دخول كمدير</button>
+                <button type="button" id="guestLoginBtn">الدخول كزائر</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
