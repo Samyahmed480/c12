@@ -18,6 +18,7 @@
             </div>
             <nav class="menu">
                 <a href="#dashboard" class="menu-item active">لوحة التحكم</a>
+                <a href="#today-cases" class="menu-item">حالات اليوم</a>
                 <a href="#patients" class="menu-item">إدارة المرضى</a>
                 <a href="#tests" class="menu-item">إدارة الفحوصات</a>
                 <a href="#results" class="menu-item">كتابة النتائج</a>
@@ -25,6 +26,7 @@
                 <a href="#inventory" class="menu-item" id="inventory-nav">إدارة المخزون</a>
                 <a href="#consumed" class="menu-item" id="consumed-nav">المستهلكات</a>
                 <a href="#settings" class="menu-item" id="settings-nav">الإعدادات</a>
+                <a href="#archive" class="menu-item" id="archive-nav">الأرشيف</a>
                 <a href="#" id="logoutBtn" class="menu-item">تسجيل الخروج</a>
             </nav>
         </aside>
@@ -75,6 +77,40 @@
                 </div>
             </section>
 
+            <!-- Today's Cases Section -->
+            <section id="today-cases" class="content-section">
+                <div class="table-header">
+                    <h2>ملخص حالات اليوم</h2>
+                    <button id="printTodayReportBtn" class="export-btn" style="background-color: #3498db;">طباعة تقرير اليوم</button>
+                </div>
+                <div class="cards">
+                    <div class="card">
+                        <h3>إجمالي فحوصات اليوم</h3>
+                        <p id="todayTotalTests">0</p>
+                    </div>
+                    <div class="card">
+                        <h3>الفحوصات المكتملة اليوم</h3>
+                        <p id="todayCompletedTests">0</p>
+                    </div>
+                    <div class="card">
+                        <h3>الفحوصات المعلقة اليوم</h3>
+                        <p id="todayPendingTests">0</p>
+                    </div>
+                </div>
+                <hr>
+                <h2>الفحوصات المعلقة اليوم</h2>
+                <table id="todayPendingTestsTable">
+                    <thead><tr><th>اسم المريض</th><th>نوع الفحص</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+                <hr>
+                <h2>الفحوصات المكتملة اليوم</h2>
+                <table id="todayCompletedTestsTable">
+                    <thead><tr><th>اسم المريض</th><th>نوع الفحص</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </section>
+
             <!-- Patients Section -->
             <section id="patients" class="content-section">
                 <h2>إضافة مريض جديد</h2>
@@ -123,10 +159,14 @@
                     <!-- Patient details will be injected here -->
                 </div>
                 <hr>
-                <h2>تاريخ التحاليل</h2>
+                <div class="table-header">
+                    <h2>تاريخ التحاليل</h2>
+                    <button id="printSelectedTestsBtn" class="action-btn" style="background-color: #3498db;">طباعة التحاليل المحددة</button>
+                </div>
                 <table id="patientProfileTestsTable">
                     <thead>
                         <tr>
+                            <th>تحديد</th>
                             <th>#</th>
                             <th>نوع الفحص</th>
                             <th>تاريخ الطلب</th>
@@ -145,6 +185,7 @@
                     <select id="testPatientId" required>
                         <option value="" disabled selected>اختر مريضاً</option>
                     </select>
+                    <input type="text" id="testTypeSearch" placeholder="ابحث عن نوع الفحص..." style="grid-column: 1 / -1;">
                     <div id="testTypesContainer" class="checkbox-container"></div>
                     <button type="submit">إضافة الفحوصات المحددة</button>
                 </form>
@@ -212,8 +253,8 @@
                     </div>
                     <div class="sub-form-container">
                         <h4>المواد المستهلكة</h4>
-                        <div id="testDefMaterialSelectContainer" class="add-material-controls"></div>
                         <div id="testDefMaterialsList"></div>
+                        <button type="button" id="openMaterialsModalBtn" class="add-btn">اختيار المواد</button>
                     </div>
                     
                     <button type="submit">حفظ نوع التحليل</button>
@@ -298,8 +339,47 @@
                         <img id="logoPreview" src="" alt="معاينة الشعار" style="max-width: 150px; max-height: 150px; margin-top: 10px; display: none;">
                     </div>
 
+                    <div class="sub-form-container">
+                        <h4>إعدادات الأرشفة</h4>
+                        <label for="archiveDays">أرشفة السجلات المكتملة تلقائياً بعد (أيام):</label>
+                        <input type="number" id="archiveDays" min="1" style="width: 100px; display: inline-block;">
+                    </div>
+
                     <button type="submit">حفظ الإعدادات</button>
                 </form>
+                <hr>
+                <div class="sub-form-container">
+                    <h4>النسخ الاحتياطي والاستعادة</h4>
+                    <p>يمكنك أخذ نسخة احتياطية من جميع بيانات النظام (المرضى، الفحوصات، المخزون، إلخ) في ملف واحد. يمكنك استخدام هذا الملف لاحقًا لاستعادة البيانات على هذا الجهاز أو نقله إلى جهاز آخر.</p>
+                    <button id="backupBtn" class="action-btn" style="background-color: #f39c12; width: 100%; margin-bottom: 15px;">أخذ نسخة احتياطية الآن</button>
+                    
+                    <label for="restoreInput">لاستعادة البيانات، اختر ملف النسخة الاحتياطية:</label>
+                    <input type="file" id="restoreInput" accept=".json">
+                    <p style="font-size: 0.8em; color: var(--danger-color);">تحذير: استعادة البيانات ستقوم بالكتابة فوق جميع البيانات الحالية في النظام.</p>
+                </div>
+                <hr>
+                <div class="sub-form-container">
+                    <h4>الأرشفة اليدوية</h4>
+                    <p>يمكنك تشغيل عملية الأرشفة يدويًا في أي وقت لنقل السجلات القديمة إلى الأرشيف بناءً على الإعدادات أعلاه.</p>
+                    <button id="archiveNowBtn" class="action-btn" style="background-color: #9b59b6; width: 100%;">أرشفة يدوية الآن</button>
+                </div>
+            </section>
+
+            <!-- Archive Section -->
+            <section id="archive" class="content-section">
+                <h2>الأرشيف</h2>
+                <p>هنا تظهر سجلات المرضى التي تم أرشفتها. يمكنك عرضها أو استعادتها إلى القائمة النشطة.</p>
+                <table id="archiveTable">
+                    <thead>
+                        <tr>
+                            <th>تاريخ الأرشفة</th>
+                            <th>اسم المريض</th>
+                            <th>عدد الفحوصات</th>
+                            <th>إجراءات</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
             </section>
 
         </main>
@@ -311,6 +391,19 @@
             <span class="close-btn">&times;</span>
             <h2 id="modalTitle">تعديل السجل</h2>
             <form id="editForm"></form>
+        </div>
+    </div>
+
+    <!-- Materials Modal -->
+    <div id="materialsModal" class="modal">
+        <div class="modal-content wide">
+            <span class="close-btn" id="closeMaterialsModalBtn">&times;</span>
+            <h2>اختيار المواد المستهلكة</h2>
+            <input type="text" id="materialsModalSearch" placeholder="ابحث عن مادة..." class="search-input" style="width: 100%; margin-bottom: 15px;">
+            <div id="materialsModalList" class="modal-list-container">
+                <!-- Material items will be injected here -->
+            </div>
+            <button id="confirmMaterialsSelectionBtn" class="modal-confirm-btn">تأكيد الاختيار</button>
         </div>
     </div>
 

@@ -1,29 +1,29 @@
 document.addEventListener('DOMContentLoaded', () => {
     // --- STATE MANAGEMENT ---
-    // IMPORTANT DATA MODEL CHANGE:
-    // testDefinitions now contain a 'parameters' array for sub-tests.
-    // results now contain a 'parameterResults' array instead of a single 'details' field.
-    // Old data will not be compatible. It's recommended to clear localStorage if upgrading.
     let patients = JSON.parse(localStorage.getItem('patients')) || [];
     let tests = JSON.parse(localStorage.getItem('tests')) || [];
     let inventory = JSON.parse(localStorage.getItem('inventory')) || [];
     let results = JSON.parse(localStorage.getItem('results')) || [];
     let testDefinitions = JSON.parse(localStorage.getItem('testDefinitions')) || [];
     let consumedLog = JSON.parse(localStorage.getItem('consumedLog')) || [];
+    let archive = JSON.parse(localStorage.getItem('archive')) || [];
     let labSettings = JSON.parse(localStorage.getItem('labSettings')) || {
         name: 'اسم المختبر',
         address: 'العنوان هنا',
         phone: 'رقم الهاتف هنا',
         email: 'البريد الإلكتروني هنا',
-        logo: 'images/logo.png' // Default or empty
+        logo: 'images/logo.png',
+        archiveAfterDays: 30
     };
 
     // Role-based access control
-    let currentUserRole = 'user'; // Default role
+    let currentUserRole = 'user';
 
     // Chart instances
     let testsStatusChartInstance = null;
     let testsByTypeChartInstance = null;
+
+    let materialListTargetId = null;
 
     // --- DOM ELEMENTS ---
     const menuItems = document.querySelectorAll('.menu-item');
@@ -38,10 +38,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // Forms
     const patientForm = document.getElementById('patientForm');
     const testForm = document.getElementById('testForm');
+    const testTypeSearchInput = document.getElementById('testTypeSearch');
     const inventoryForm = document.getElementById('inventoryForm');
     const resultForm = document.getElementById('resultForm');
     const testDefinitionForm = document.getElementById('testDefinitionForm');
     const settingsForm = document.getElementById('settingsForm');
+    const archiveDaysInput = document.getElementById('archiveDays');
+    const archiveNowBtn = document.getElementById('archiveNowBtn');
 
     // Tables
     const patientsTableBody = document.querySelector('#patientsTable tbody');
@@ -50,14 +53,23 @@ document.addEventListener('DOMContentLoaded', () => {
     const resultsTableBody = document.querySelector('#resultsTable tbody');
     const testDefinitionsTableBody = document.querySelector('#testDefinitionsTable tbody');
     const consumedTableBody = document.querySelector('#consumedTable tbody');
+    const archiveTableBody = document.querySelector('#archiveTable tbody');
 
     const addTestDefParamBtn = document.getElementById('addTestDefParamBtn');
     const testDefParametersContainer = document.getElementById('testDefParametersContainer');
     const resultParametersContainer = document.getElementById('result-parameters-container');
 
+    const materialsModal = document.getElementById('materialsModal');
+    const closeMaterialsModalBtn = document.getElementById('closeMaterialsModalBtn');
+    const materialsModalSearch = document.getElementById('materialsModalSearch');
+    const materialsModalList = document.getElementById('materialsModalList');
+    const confirmMaterialsSelectionBtn = document.getElementById('confirmMaterialsSelectionBtn');
+    const openMaterialsModalBtn = document.getElementById('openMaterialsModalBtn');
+
     // Patient Profile Elements
     const patientProfileSection = document.getElementById('patient-profile');
     const backToPatientsBtn = document.getElementById('backToPatientsBtn');
+    const printSelectedTestsBtn = document.getElementById('printSelectedTestsBtn');
 
     // Dashboard Cards
     const totalPatientsCard = document.getElementById('totalPatients');
@@ -65,6 +77,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const totalResultsCard = document.getElementById('totalResults');
     const totalTestDefsCard = document.getElementById('totalTestDefs');
     const lowStockItemsCard = document.getElementById('lowStockItems');
+
+    // Today's Cases Elements
+    const printTodayReportBtn = document.getElementById('printTodayReportBtn');
+    const todayTotalTestsCard = document.getElementById('todayTotalTests');
+    const todayCompletedTestsCard = document.getElementById('todayCompletedTests');
+    const todayPendingTestsCard = document.getElementById('todayPendingTests');
+    const todayPendingTestsTableBody = document.querySelector('#todayPendingTestsTable tbody');
+    const todayCompletedTestsTableBody = document.querySelector('#todayCompletedTestsTable tbody');
     
     // Modal Elements
     const editModal = document.getElementById('editModal');
@@ -83,6 +103,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const exportConsumedBtn = document.getElementById('exportConsumedBtn');
     const exportResultsBtn = document.getElementById('exportResultsBtn');
 
+    // Backup & Restore Elements
+    const backupBtn = document.getElementById('backupBtn');
+    const restoreInput = document.getElementById('restoreInput');
+
     // --- LOGIN & ROLE MANAGEMENT ---
     const completeLogin = (role) => {
         currentUserRole = role;
@@ -90,27 +114,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (currentUserRole === 'user') {
             body.classList.add('user-role');
-            // Also hide the nav links via JS for robustness
-            document.getElementById('inventory-nav').style.display = 'none';
-            document.querySelector('a[href="#test-definitions"]').style.display = 'none';
-            document.getElementById('consumed-nav').style.display = 'none';
-            document.getElementById('settings-nav').style.display = 'none';
             alert('تم تسجيل الدخول كمستخدم عادي. صلاحيات التعديل والحذف معطلة.');
         } else {
             body.classList.remove('user-role');
-            document.getElementById('inventory-nav').style.display = 'block';
-            document.querySelector('a[href="#test-definitions"]').style.display = 'block';
-            document.getElementById('consumed-nav').style.display = 'block';
-            document.getElementById('settings-nav').style.display = 'block';
             alert('مرحباً أيها المدير! تم منح الوصول الكامل.');
+            runArchivingProcess(false); // Run archiving on login, silently
         }
 
         loginModal.style.display = 'none';
         mainContainer.style.visibility = 'visible';
 
-        // Initialize the rest of the app after login
         applyTheme(localStorage.getItem('theme') || 'light');
-        updateSidebarHeader(); // NEW: Update sidebar with lab info
+        updateSidebarHeader();
         renderAll();
         const lowStockCount = inventory.filter(i => i.currentStock <= i.reorderLevel).length;
         if (lowStockCount > 0) {
@@ -158,6 +173,7 @@ document.addEventListener('DOMContentLoaded', () => {
         localStorage.setItem('results', JSON.stringify(results));
         localStorage.setItem('testDefinitions', JSON.stringify(testDefinitions));
         localStorage.setItem('consumedLog', JSON.stringify(consumedLog));
+        localStorage.setItem('archive', JSON.stringify(archive));
         localStorage.setItem('labSettings', JSON.stringify(labSettings));
     };
 
@@ -245,8 +261,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const renderTestDefinitions = (data = testDefinitions) => {
         testDefinitionsTableBody.innerHTML = data.map(def => {
-            const parametersHtml = def.parameters.map(p => `<li>${p.name} (${p.refRange} ${p.unit || ''})</li>`).join('');
-            const materialsHtml = def.materials.map(m => {
+            const parametersHtml = (def.parameters || []).map(p => `<li>${p.name} (${p.refRange} ${p.unit || ''})</li>`).join('');
+            const materialsHtml = (def.materials || []).map(m => {
                 const item = inventory.find(i => i.id === m.id);
                 return `<li>${item ? item.name : 'مادة محذوفة'}: ${m.quantity} ${item ? item.unit : ''}</li>`;
             }).join('');
@@ -263,11 +279,23 @@ document.addEventListener('DOMContentLoaded', () => {
             </tr>`;
         }).join('');
         populateTestTypesCheckboxes();
-        updateAvailableMaterials('testDefMaterialsList', 'testDefMaterialSelectContainer');
+    };
+
+    const renderArchive = (data = archive) => {
+        archiveTableBody.innerHTML = data.map(item => `
+            <tr>
+                <td>${new Date(item.archivedDate).toLocaleDateString('ar-EG')}</td>
+                <td>${item.patient.name}</td>
+                <td>${item.tests.length}</td>
+                <td>
+                    <button class="action-btn view" data-id="${item.archiveId}" data-type="archive-view">عرض</button>
+                    <button class="action-btn edit" data-id="${item.archiveId}" data-type="archive-restore" style="background-color: #16a085;">استعادة</button>
+                </td>
+            </tr>
+        `).join('');
     };
 
     const renderConsumedLog = (data = consumedLog) => {
-        // Sort by date descending
         const sortedData = data.sort((a, b) => new Date(b.date) - new Date(a.date));
         consumedTableBody.innerHTML = sortedData.map(log => `
             <tr>
@@ -278,6 +306,35 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${new Date(log.date).toLocaleString('ar-EG')}</td>
             </tr>
         `).join('');
+    };
+
+    const isToday = (someDate) => {
+        const today = new Date();
+        const d = new Date(someDate);
+        return d.getDate() == today.getDate() &&
+            d.getMonth() == today.getMonth() &&
+            d.getFullYear() == today.getFullYear();
+    };
+
+    const renderTodayCases = () => {
+        const todayTests = tests.filter(t => isToday(t.date));
+        const pendingToday = todayTests.filter(t => t.status === 'معلق');
+        const completedToday = todayTests.filter(t => t.status === 'مكتمل');
+
+        todayTotalTestsCard.textContent = todayTests.length;
+        todayCompletedTestsCard.textContent = completedToday.length;
+        todayPendingTestsCard.textContent = pendingToday.length;
+
+        const renderTestRow = (test) => {
+            const patient = patients.find(p => p.id === test.patientId);
+            return `<tr>
+                <td>${patient ? patient.name : 'مريض محذوف'}</td>
+                <td>${test.type}</td>
+            </tr>`;
+        };
+
+        todayPendingTestsTableBody.innerHTML = pendingToday.map(renderTestRow).join('');
+        todayCompletedTestsTableBody.innerHTML = completedToday.map(renderTestRow).join('');
     };
 
     const updateDashboard = () => {
@@ -308,12 +365,25 @@ document.addEventListener('DOMContentLoaded', () => {
         `).join('');
     };
 
+    testTypeSearchInput.addEventListener('keyup', () => {
+        const searchTerm = testTypeSearchInput.value.toLowerCase();
+        const testTypeLabels = document.querySelectorAll('#testTypesContainer label');
+        
+        testTypeLabels.forEach(label => {
+            const testName = label.textContent.trim().toLowerCase();
+            if (testName.includes(searchTerm)) {
+                label.style.display = 'flex';
+            } else {
+                label.style.display = 'none';
+            }
+        });
+    });
+
     const updateResultTestDropdown = () => {
         const select = document.getElementById('resultTestId');
-        const currentVal = select.value;
         select.innerHTML = '<option value="" disabled selected>اختر فحصًا لإضافة نتيجة</option>' +
             tests.filter(t => t.status === 'معلق').map(t => `<option value="${t.id}">${t.id} - ${t.type}</option>`).join('');
-        select.value = currentVal;
+        select.value = '';
     };
 
     // --- NAVIGATION ---
@@ -323,23 +393,20 @@ document.addEventListener('DOMContentLoaded', () => {
             e.preventDefault();
             const targetId = item.getAttribute('href').substring(1);
 
-            // Security check for sensitive sections
-            if ((targetId === 'inventory' || targetId === 'test-definitions' || targetId === 'consumed' || targetId === 'settings') && currentUserRole !== 'admin') {
+            const adminSections = ['inventory', 'test-definitions', 'consumed', 'settings', 'archive'];
+            if (adminSections.includes(targetId) && currentUserRole !== 'admin') {
                 alert('ليس لديك الصلاحية للوصول إلى هذا القسم.');
-                // Optional: navigate back to dashboard
                 document.querySelector('a[href="#dashboard"]').click();
                 return;
             }
             menuItems.forEach(i => i.classList.remove('active'));
             item.classList.add('active');
             sections.forEach(sec => sec.classList.toggle('active', sec.id === targetId));
-            patientProfileSection.classList.remove('active'); // Hide profile page on main nav click
-            resultParametersContainer.innerHTML = ''; // Clear dynamic result form on navigation
+            patientProfileSection.classList.remove('active');
+            resultParametersContainer.innerHTML = '';
             headerTitle.textContent = item.textContent;
             searchInput.value = '';
-            if (targetId !== 'dashboard') {
-                // Optionally destroy charts when leaving dashboard to save resources
-            }
+            
             if (targetId === 'settings') {
                 renderSettingsPage();
             }
@@ -389,7 +456,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const newTests = [];
         selectedTests.forEach(checkbox => {
             newTests.push({
-                id: `T${Date.now()}_${Math.random().toString(36).substr(2, 5)}`, // Add random part to avoid collision in fast loops
+                id: `T${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
                 patientId: patientId,
                 type: checkbox.value,
                 status: 'معلق',
@@ -399,7 +466,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         tests.push(...newTests);
         saveData();
-        renderAll(); // Use renderAll to update everything
+        renderAll();
         testForm.reset();
         alert(`تمت إضافة ${newTests.length} فحص/فحوصات بنجاح.`);
     });
@@ -424,8 +491,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const materials = [];
         document.querySelectorAll('#testDefMaterialsList .consumed-material-item').forEach(matItem => {
             materials.push({
-                id: matItem.querySelector('input[type="hidden"]').value,
-                quantity: parseInt(matItem.querySelector('input[type="number"]').value)
+                id: matItem.dataset.id,
+                quantity: parseInt(matItem.dataset.quantity)
             });
         });
     
@@ -443,9 +510,20 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        const newDefName = document.getElementById('testDefName').value.trim();
+        if (!newDefName) {
+            alert('اسم الفحص لا يمكن أن يكون فارغاً.');
+            return;
+        }
+
+        if (testDefinitions.some(def => def.name.trim().toLowerCase() === newDefName.toLowerCase())) {
+            alert('يوجد نوع تحليل آخر بنفس الاسم. الرجاء اختيار اسم فريد.');
+            return;
+        }
+
         testDefinitions.push({
             id: `TD${Date.now()}`,
-            name: document.getElementById('testDefName').value,
+            name: newDefName,
             parameters: parameters,
             materials: materials
         });
@@ -471,7 +549,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         let allMaterialsAvailable = true;
-        testDef.materials.forEach(material => {
+        (testDef.materials || []).forEach(material => {
             const inventoryItem = inventory.find(i => i.id === material.id);
             if (!inventoryItem || inventoryItem.currentStock < material.quantity) {
                 alert(`كمية غير كافية في المخزون للمادة: ${inventoryItem ? inventoryItem.name : 'مادة محذوفة'}`);
@@ -481,9 +559,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!allMaterialsAvailable) return;
 
-        testDef.materials.forEach(material => {
+        (testDef.materials || []).forEach(material => {
             const inventoryItem = inventory.find(i => i.id === material.id);
-            // NEW: Log the consumption
             consumedLog.push({
                 materialId: material.id,
                 materialName: inventoryItem.name,
@@ -520,59 +597,14 @@ document.addEventListener('DOMContentLoaded', () => {
         renderAll();
         resultForm.reset();
         resultParametersContainer.innerHTML = '';
-    });
-
-    // --- DYNAMIC MATERIALS FOR FORMS ---
-    const updateAvailableMaterials = (listElementId, selectElementId) => {
-        const listElement = document.getElementById(listElementId);
-        const selectElement = document.getElementById(selectElementId);
-        if (!listElement || !selectElement) return;
-    
-        const usedMaterialIds = new Set();
-        listElement.querySelectorAll('.consumed-material-item').forEach(item => {
-            usedMaterialIds.add(item.dataset.id);
-        });
-    
-        const availableMaterials = inventory.filter(item => !usedMaterialIds.has(item.id));
-    
-        selectElement.innerHTML = `<select><option value="" disabled selected>اختر مادة...</option>` +
-            availableMaterials.map(item => `<option value="${item.id}">${item.name}</option>`).join('') + `</select><button type="button" class="add-material-btn">إضافة</button>`;
-    };
-
-    const addMaterialFromSelector = (listElementId, select) => {
-        const list = document.getElementById(listElementId);
-        if (!list || !select || !select.value) return;
-        
-        const materialId = select.value;
-        const material = inventory.find(i => i.id === materialId);
-        if (!material) return;
-    
-        const item = document.createElement('div');
-        item.className = 'consumed-material-item';
-        item.dataset.id = material.id;
-    
-        item.innerHTML = `
-            <span>${material.name}</span>
-            <input type="number" placeholder="الكمية" min="1" value="1" required>
-            <input type="hidden" value="${material.id}">
-            <button type="button" class="action-btn delete delete-material-item">X</button>
-        `;
-        list.appendChild(item);
-        updateAvailableMaterials(listElementId, select.parentElement);
-    };
-
-    document.getElementById('testDefMaterialSelectContainer').addEventListener('click', e => {
-        if (e.target.tagName === 'BUTTON') {
-            const select = e.target.previousElementSibling;
-            addMaterialFromSelector('testDefMaterialsList', select);
-        }
+        alert('تم تسجيل النتيجة بنجاح، وأصبح الفحص مكتملاً.');
     });
 
     // --- AUTO-POPULATE RESULT FORM ---
     document.getElementById('resultTestId').addEventListener('change', e => {
         const testId = e.target.value;
         const test = tests.find(t => t.id === testId);
-        resultParametersContainer.innerHTML = ''; // Clear previous
+        resultParametersContainer.innerHTML = '';
         if (!test) return;
 
         const testDef = testDefinitions.find(def => def.name === test.type);
@@ -581,7 +613,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        testDef.parameters.forEach(param => {
+        (testDef.parameters || []).forEach(param => {
             const row = document.createElement('div');
             row.className = 'parameter-entry-row';
             row.dataset.name = param.name;
@@ -616,12 +648,94 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // --- MATERIALS MODAL LOGIC ---
+    const openMaterialsModal = () => {
+        const targetList = document.getElementById(materialListTargetId);
+        if (!targetList) return;
+    
+        const currentlySelected = {};
+        targetList.querySelectorAll('.consumed-material-item').forEach(item => {
+            currentlySelected[item.dataset.id] = parseInt(item.dataset.quantity);
+        });
+    
+        materialsModalList.innerHTML = '';
+        inventory.forEach(item => {
+            const quantity = currentlySelected[item.id] || 0;
+            const isChecked = quantity > 0;
+    
+            const modalItem = document.createElement('div');
+            modalItem.className = 'material-modal-item';
+            modalItem.dataset.name = item.name.toLowerCase();
+            modalItem.innerHTML = `
+                <input type="checkbox" data-id="${item.id}" ${isChecked ? 'checked' : ''}>
+                <label>${item.name} (${item.unit || 'وحدة'})</label>
+                <input type="number" min="0" value="${quantity}" class="modal-quantity-input">
+            `;
+            materialsModalList.appendChild(modalItem);
+        });
+        
+        materialsModalSearch.value = '';
+        materialsModal.style.display = 'flex';
+    };
+    
+    const closeMaterialsModal = () => {
+        materialsModal.style.display = 'none';
+    };
+    
+    openMaterialsModalBtn.addEventListener('click', () => {
+        materialListTargetId = 'testDefMaterialsList';
+        openMaterialsModal();
+    });
+    
+    closeMaterialsModalBtn.addEventListener('click', closeMaterialsModal);
+    
+    materialsModalSearch.addEventListener('keyup', e => {
+        const searchTerm = e.target.value.toLowerCase();
+        materialsModalList.querySelectorAll('.material-modal-item').forEach(item => {
+            const name = item.dataset.name;
+            item.style.display = name.includes(searchTerm) ? 'grid' : 'none';
+        });
+    });
+    
+    confirmMaterialsSelectionBtn.addEventListener('click', () => {
+        const targetList = document.getElementById(materialListTargetId);
+        if (!targetList) return;
+    
+        targetList.innerHTML = '';
+    
+        materialsModalList.querySelectorAll('.material-modal-item').forEach(item => {
+            const checkbox = item.querySelector('input[type="checkbox"]');
+            const quantityInput = item.querySelector('input[type="number"]');
+            
+            if (checkbox.checked && quantityInput.value > 0) {
+                const materialId = checkbox.dataset.id;
+                const quantity = parseInt(quantityInput.value);
+                const material = inventory.find(i => i.id === materialId);
+    
+                if (material) {
+                    const displayItem = document.createElement('div');
+                    displayItem.className = 'consumed-material-item';
+                    displayItem.dataset.id = materialId;
+                    displayItem.dataset.quantity = quantity;
+                    displayItem.innerHTML = `
+                        <span>${material.name}</span>
+                        <span>الكمية: ${quantity} ${material.unit || ''}</span>
+                    `;
+                    targetList.appendChild(displayItem);
+                }
+            }
+        });
+    
+        closeMaterialsModal();
+    });
+
     // --- SETTINGS PAGE ---
     const renderSettingsPage = () => {
         document.getElementById('labName').value = labSettings.name;
         document.getElementById('labAddress').value = labSettings.address;
         document.getElementById('labPhone').value = labSettings.phone;
         document.getElementById('labEmail').value = labSettings.email;
+        archiveDaysInput.value = labSettings.archiveAfterDays || 30;
         const logoPreview = document.getElementById('logoPreview');
         if (labSettings.logo && labSettings.logo.startsWith('data:image')) {
             logoPreview.src = labSettings.logo;
@@ -647,10 +761,149 @@ document.addEventListener('DOMContentLoaded', () => {
         labSettings.address = document.getElementById('labAddress').value;
         labSettings.phone = document.getElementById('labPhone').value;
         labSettings.email = document.getElementById('labEmail').value;
-        labSettings.logo = document.getElementById('logoPreview').src; // Get the base64 from the preview
+        labSettings.logo = document.getElementById('logoPreview').src;
+        labSettings.archiveAfterDays = parseInt(archiveDaysInput.value) || 30;
         saveData();
-        updateSidebarHeader(); // Update the UI immediately
+        updateSidebarHeader();
         alert('تم حفظ الإعدادات بنجاح!');
+    });
+
+    // --- ARCHIVING ---
+    archiveNowBtn.addEventListener('click', () => {
+        if (confirm('هل أنت متأكد من رغبتك في أرشفة السجلات القديمة الآن؟')) {
+            runArchivingProcess(true);
+        }
+    });
+
+    const runArchivingProcess = (showFeedback = false) => {
+        const archiveDays = labSettings.archiveAfterDays || 30;
+        const cutoffDate = new Date();
+        cutoffDate.setDate(cutoffDate.getDate() - archiveDays);
+
+        let archivedCount = 0;
+        
+        const patientIdsToArchive = patients.filter(patient => {
+            const patientTests = tests.filter(t => t.patientId === patient.id);
+            if (patientTests.length === 0) return false;
+
+            const allTestsCompleted = patientTests.every(t => t.status === 'مكتمل');
+            if (!allTestsCompleted) return false;
+
+            const resultDates = patientTests.map(t => {
+                const result = results.find(r => r.testId === t.id);
+                return result ? new Date(result.date) : null;
+            }).filter(Boolean);
+
+            if (resultDates.length !== patientTests.length) return false;
+
+            const mostRecentDate = new Date(Math.max.apply(null, resultDates));
+            return mostRecentDate < cutoffDate;
+        }).map(p => p.id);
+
+
+        if (patientIdsToArchive.length > 0) {
+            patientIdsToArchive.forEach(patientId => {
+                const patient = patients.find(p => p.id === patientId);
+                const patientTests = tests.filter(t => t.patientId === patientId);
+                const patientTestIds = patientTests.map(t => t.id);
+                const patientResults = results.filter(r => patientTestIds.includes(r.testId));
+
+                archive.push({
+                    archiveId: `A${Date.now()}_${patient.id}`,
+                    archivedDate: new Date(),
+                    patient: patient,
+                    tests: patientTests,
+                    results: patientResults
+                });
+                archivedCount++;
+            });
+
+            patients = patients.filter(p => !patientIdsToArchive.includes(p.id));
+            tests = tests.filter(t => !patientIdsToArchive.includes(t.patientId));
+            results = results.filter(r => !tests.find(t => t.id === r.testId && patientIdsToArchive.includes(t.patientId)));
+            
+            saveData();
+            renderAll();
+        }
+
+        if (showFeedback) {
+            if (archivedCount > 0) {
+                alert(`تمت أرشفة سجلات ${archivedCount} مرضى بنجاح.`);
+            } else {
+                alert('لا توجد سجلات قديمة تستوفي شروط الأرشفة حاليًا.');
+            }
+        }
+    };
+
+    // --- BACKUP & RESTORE ---
+    backupBtn.addEventListener('click', () => {
+        if (!confirm('هل تريد إنشاء نسخة احتياطية من جميع بيانات النظام؟')) {
+            return;
+        }
+
+        const backupData = {
+            patients,
+            tests,
+            inventory,
+            results,
+            testDefinitions,
+            consumedLog,
+            archive,
+            labSettings
+        };
+
+        const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        const today = new Date().toISOString().slice(0, 10);
+        link.download = `lab_backup_${today}.json`;
+        link.href = url;
+        link.click();
+        URL.revokeObjectURL(url);
+        alert('تم إنشاء ملف النسخة الاحتياطية بنجاح.');
+    });
+
+    restoreInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (!confirm('تحذير! هل أنت متأكد من رغبتك في استعادة البيانات من هذا الملف؟ سيتم حذف جميع البيانات الحالية واستبدالها بالبيانات الموجودة في الملف.')) {
+            e.target.value = '';
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try {
+                const restoredData = JSON.parse(event.target.result);
+
+                const requiredKeys = ['patients', 'tests', 'inventory', 'results', 'testDefinitions', 'consumedLog', 'archive', 'labSettings'];
+                if (!requiredKeys.every(key => restoredData.hasOwnProperty(key))) {
+                    alert('خطأ: ملف النسخة الاحتياطية غير صالح أو تالف.');
+                    e.target.value = '';
+                    return;
+                }
+
+                localStorage.setItem('patients', JSON.stringify(restoredData.patients || []));
+                localStorage.setItem('tests', JSON.stringify(restoredData.tests || []));
+                localStorage.setItem('inventory', JSON.stringify(restoredData.inventory || []));
+                localStorage.setItem('results', JSON.stringify(restoredData.results || []));
+                localStorage.setItem('testDefinitions', JSON.stringify(restoredData.testDefinitions || []));
+                localStorage.setItem('consumedLog', JSON.stringify(restoredData.consumedLog || []));
+                localStorage.setItem('archive', JSON.stringify(restoredData.archive || []));
+                localStorage.setItem('labSettings', JSON.stringify(restoredData.labSettings || {}));
+
+                alert('تم استعادة البيانات بنجاح. سيتم إعادة تحميل التطبيق الآن.');
+                window.location.reload();
+
+            } catch (error) {
+                alert('حدث خطأ أثناء قراءة ملف النسخة الاحتياطية. تأكد من أن الملف صحيح.');
+                console.error("Restore error:", error);
+            } finally {
+                e.target.value = '';
+            }
+        };
+        reader.readAsText(file);
     });
 
     // --- ACTIONS (EDIT/DELETE/PRINT) ---
@@ -668,19 +921,26 @@ document.addEventListener('DOMContentLoaded', () => {
         if (target.classList.contains('print')) {
             handlePrint(target.dataset.id);
         }
-        if (target.classList.contains('delete-material-item')) {
-            const itemToRemove = target.closest('.consumed-material-item');
-            const listElement = itemToRemove.parentElement;
-            itemToRemove.remove();
-    
-            const activeSectionId = document.querySelector('.content-section.active')?.id;
-            const modalOpen = editModal.style.display === 'block';
-
-            if (activeSectionId === 'test-definitions' || (modalOpen && editForm.dataset.type === 'test-definition')) {
-                updateAvailableMaterials(listElement.id, listElement.id.replace('List', 'SelectContainer'));
-            }
+        if (target.dataset.type === 'archive-restore') {
+            handleRestoreFromArchive(target.dataset.id);
+        }
+        if (target.dataset.type === 'archive-view') {
+            handleViewArchivedProfile(target.dataset.id);
         }
     });
+
+    printSelectedTestsBtn.addEventListener('click', () => {
+        const selectedResultIds = Array.from(document.querySelectorAll('.test-print-checkbox:checked')).map(cb => cb.value);
+        
+        if (selectedResultIds.length === 0) {
+            alert('الرجاء تحديد تحليل واحد على الأقل للطباعة.');
+            return;
+        }
+    
+        handleMultiPrint(selectedResultIds);
+    });
+
+    printTodayReportBtn.addEventListener('click', () => handlePrintTodayReport());
 
     const handleDelete = (id, type) => {
         if (currentUserRole !== 'admin') {
@@ -708,8 +968,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 break;
             case 'test-definition':
                 const def = testDefinitions.find(d => d.id === id);
-                if (def && tests.some(t => t.type === def.name)) {
-                    alert('لا يمكن حذف هذا النوع من التحاليل لأنه مستخدم في فحوصات حالية.');
+                if (def && (tests.some(t => t.type === def.name) || archive.some(a => a.tests.some(t => t.type === def.name)))) {
+                    alert('لا يمكن حذف هذا النوع من التحاليل لأنه مستخدم في فحوصات حالية أو مؤرشفة.');
                     return;
                 }
                 testDefinitions = testDefinitions.filter(d => d.id !== id);
@@ -723,14 +983,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const patient = patients.find(p => p.id === patientId);
         if (!patient) return;
 
-        // Hide all main sections and show the profile section
         sections.forEach(sec => sec.classList.remove('active'));
         patientProfileSection.classList.add('active');
         
-        // Update header
         headerTitle.textContent = `ملف المريض: ${patient.name}`;
 
-        // Render the profile content
         renderPatientProfile(patient);
     };
 
@@ -754,42 +1011,187 @@ document.addEventListener('DOMContentLoaded', () => {
             const printButton = result 
                 ? `<button class="action-btn print" data-id="${result.id}">طباعة</button>` 
                 : `<button class="action-btn" disabled>معلق</button>`;
+            const checkbox = result
+                ? `<input type="checkbox" class="test-print-checkbox" value="${result.id}">`
+                : `<input type="checkbox" disabled>`;
 
             return `<tr>
-                <td>${index + 1}</td><td>${test.type}</td><td>${new Date(test.date).toLocaleDateString('ar-EG')}</td><td>${test.status}</td><td>${printButton}</td>
+                <td>${checkbox}</td>
+                <td>${index + 1}</td>
+                <td>${test.type}</td>
+                <td>${new Date(test.date).toLocaleDateString('ar-EG')}</td>
+                <td>${test.status}</td>
+                <td>${printButton}</td>
             </tr>`;
         }).join('');
     };
 
+    const handleRestoreFromArchive = (archiveId) => {
+        if (currentUserRole !== 'admin') {
+            alert('ليس لديك الصلاحية للقيام بهذا الإجراء.');
+            return;
+        }
+        if (!confirm('هل أنت متأكد من رغبتك في استعادة هذا السجل من الأرشيف؟')) return;
+
+        const archiveIndex = archive.findIndex(item => item.archiveId === archiveId);
+        if (archiveIndex === -1) {
+            alert('لم يتم العثور على السجل في الأرشيف.');
+            return;
+        }
+
+        const itemToRestore = archive[archiveIndex];
+
+        patients.push(itemToRestore.patient);
+        tests.push(...itemToRestore.tests);
+        results.push(...itemToRestore.results);
+
+        archive.splice(archiveIndex, 1);
+
+        saveData();
+        renderAll();
+        alert(`تم استعادة سجل المريض "${itemToRestore.patient.name}" بنجاح.`);
+    };
+
+    const handleViewArchivedProfile = (archiveId) => {
+        const archivedItem = archive.find(item => item.archiveId === archiveId);
+        if (!archivedItem) return;
+
+        sections.forEach(sec => sec.classList.remove('active'));
+        patientProfileSection.classList.add('active');
+        
+        headerTitle.textContent = `ملف المريض (مؤرشف): ${archivedItem.patient.name}`;
+
+        const infoDiv = document.getElementById('patient-profile-info');
+        infoDiv.innerHTML = `
+            <p><strong>المعرف:</strong> ${archivedItem.patient.id}</p>
+            <p><strong>الرقم الوطني:</strong> ${archivedItem.patient.nationalId || 'غير مسجل'}</p>
+            <p><strong>الاسم:</strong> ${archivedItem.patient.name}</p>
+            <p><strong>العمر:</strong> ${archivedItem.patient.age}</p>
+            <p><strong>الجنس:</strong> ${archivedItem.patient.gender}</p>
+            <p><strong>الهاتف:</strong> ${archivedItem.patient.phone || 'لا يوجد'}</p>
+            <p><strong>السجل الطبي:</strong> ${archivedItem.patient.record || 'لا يوجد'}</p>
+        `;
+
+        const testsTableBody = document.querySelector('#patientProfileTestsTable tbody');
+        const patientTests = archivedItem.tests.sort((a, b) => new Date(b.date) - new Date(a.date));
+        
+        testsTableBody.innerHTML = patientTests.map((test, index) => {
+            const result = archivedItem.results.find(r => r.testId === test.id);
+            const printButton = result 
+                ? `<button class="action-btn print" data-id="${result.id}" disabled>طباعة (مؤرشف)</button>` 
+                : `<button class="action-btn" disabled>معلق</button>`;
+            const checkbox = `<input type="checkbox" disabled>`;
+
+            return `<tr>
+                <td>${checkbox}</td>
+                <td>${index + 1}</td>
+                <td>${test.type}</td>
+                <td>${new Date(test.date).toLocaleDateString('ar-EG')}</td>
+                <td>${test.status}</td>
+                <td>${printButton}</td>
+            </tr>`;
+        }).join('');
+
+        backToPatientsBtn.onclick = () => {
+            document.querySelector('a[href="#archive"]').click();
+            backToPatientsBtn.onclick = defaultBackToPatients;
+        };
+    };
+
+    const handlePrintTodayReport = () => {
+        const todayTests = tests.filter(t => isToday(t.date));
+        const pendingToday = todayTests.filter(t => t.status === 'معلق');
+        const completedToday = todayTests.filter(t => t.status === 'مكتمل');
+    
+        const todayDate = new Date().toLocaleDateString('ar-EG');
+    
+        const summaryHtml = `
+            <table class="report-patient-info">
+                <tr>
+                    <th>إجمالي فحوصات اليوم</th><td>${todayTests.length}</td>
+                    <th>الفحوصات المكتملة</th><td>${completedToday.length}</td>
+                    <th>الفحوصات المعلقة</th><td>${pendingToday.length}</td>
+                </tr>
+            </table>
+        `;
+    
+        const createTestListHtml = (title, testList) => {
+            if (testList.length === 0) {
+                return `<h3>${title} (0)</h3><p>لا يوجد.</p>`;
+            }
+            return `
+                <h3>${title} (${testList.length})</h3>
+                <table class="report-results-table">
+                    <thead><tr><th>اسم المريض</th><th>نوع الفحص</th></tr></thead>
+                    <tbody>
+                        ${testList.map(t => {
+                            const patient = patients.find(p => p.id === t.patientId);
+                            return `<tr><td>${patient ? patient.name : 'مريض محذوف'}</td><td>${t.type}</td></tr>`;
+                        }).join('')}
+                    </tbody>
+                </table>
+            `;
+        };
+    
+        const pendingHtml = createTestListHtml('الفحوصات المعلقة (المتبقية)', pendingToday);
+        const completedHtml = createTestListHtml('الفحوصات المكتملة (المنتهية)', completedToday);
+    
+        const reportContent = document.getElementById('report-content');
+        reportContent.innerHTML = `
+            <div class="report-header">
+                <div class="report-header-logo">
+                    <img src="${labSettings.logo}" alt="شعار المختبر">
+                </div>
+                <div class="report-header-info">
+                    <h2>${labSettings.name}</h2>
+                    <p>${labSettings.address}</p>
+                    <p>هاتف: ${labSettings.phone} | بريد إلكتروني: ${labSettings.email}</p>
+                </div>
+            </div>
+            <h2 class="report-title">تقرير حالات اليوم (${todayDate})</h2>
+            ${summaryHtml}
+            <div class="report-results-section" style="margin-top: 20px;">
+                ${pendingHtml}
+            </div>
+            <div class="report-results-section" style="margin-top: 20px;">
+                ${completedHtml}
+            </div>
+            <div class="report-footer">
+                <p>تاريخ إصدار التقرير: ${new Date().toLocaleString('ar-EG')}</p>
+            </div>
+        `;
+        window.print();
+    };
+
     const handlePrint = (resultId) => {
-        // 1. Find the initial context (patient, date) from the clicked result
-        const initialResult = results.find(r => r.id === resultId);
+        const allResults = [...results, ...archive.flatMap(a => a.results)];
+        const allTests = [...tests, ...archive.flatMap(a => a.tests)];
+        const allPatients = [...patients, ...archive.map(a => a.patient)];
+
+        const initialResult = allResults.find(r => r.id === resultId);
         if (!initialResult) { alert('لم يتم العثور على النتيجة!'); return; }
-        const initialTest = tests.find(t => t.id === initialResult.testId);
+        const initialTest = allTests.find(t => t.id === initialResult.testId);
         if (!initialTest) { alert('لم يتم العثور على الفحص المرتبط!'); return; }
-        const patient = patients.find(p => p.id === initialTest.patientId);
+        const patient = allPatients.find(p => p.id === initialTest.patientId);
         if (!patient) { alert('لم يتم العثور على المريض المرتبط!'); return; }
     
         const visitDate = new Date(initialTest.date).toLocaleDateString('ar-EG');
     
-        // 2. Find all tests for this patient on the same date
-        const testsForVisit = tests.filter(t => 
+        const testsForVisit = allTests.filter(t => 
             t.patientId === patient.id && 
             new Date(t.date).toLocaleDateString('ar-EG') === visitDate
         );
     
-        // 3. Gather all corresponding results for these tests
         const resultsForVisit = testsForVisit.map(test => {
-            const result = results.find(r => r.testId === test.id);
+            const result = allResults.find(r => r.testId === test.id);
             return result ? { test, result } : null;
-        }).filter(Boolean); // Filter out any tests that don't have a result yet
+        }).filter(Boolean);
     
         if (resultsForVisit.length === 0) {
             alert('لا توجد نتائج مكتملة لهذا المريض في هذا التاريخ.');
             return;
         }
     
-        // 4. Generate the HTML for the consolidated report
         const resultsHtml = resultsForVisit.map(({ test, result }) => {
             const notesHtml = result.notes ? `
                 <div class="report-notes-section">
@@ -809,7 +1211,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </tr>
                     </thead>
                     <tbody>
-                        ${result.parameterResults.map(p => `
+                        ${(result.parameterResults || []).map(p => `
                             <tr>
                                 <td>${p.name}</td>
                                 <td>${p.value}</td>
@@ -869,6 +1271,97 @@ document.addEventListener('DOMContentLoaded', () => {
         window.print();
     };
 
+    const handleMultiPrint = (resultIds) => {
+        const allResults = [...results, ...archive.flatMap(a => a.results)];
+        const allTests = [...tests, ...archive.flatMap(a => a.tests)];
+        const allPatients = [...patients, ...archive.map(a => a.patient)];
+
+        const firstResult = allResults.find(r => r.id === resultIds[0]);
+        if (!firstResult) { alert('خطأ في العثور على النتائج المحددة.'); return; }
+        const firstTest = allTests.find(t => t.id === firstResult.testId);
+        if (!firstTest) { alert('خطأ في العثور على الفحوصات المرتبطة.'); return; }
+        const patient = allPatients.find(p => p.id === firstTest.patientId);
+        if (!patient) { alert('لم يتم العثور على المريض المرتبط!'); return; }
+    
+        const resultsToPrint = resultIds.map(id => {
+            const result = allResults.find(r => r.id === id);
+            const test = result ? allTests.find(t => t.id === result.testId) : null;
+            return result && test ? { test, result } : null;
+        }).filter(Boolean);
+    
+        if (resultsToPrint.length === 0) {
+            alert('لا توجد نتائج صالحة للطباعة.');
+            return;
+        }
+    
+        const resultsHtml = resultsToPrint.map(({ test, result }) => {
+            const notesHtml = result.notes ? `
+                <div class="report-notes-section">
+                    <p><strong>ملاحظات الطبيب (بتاريخ ${new Date(test.date).toLocaleDateString('ar-EG')}):</strong></p>
+                    <p>${result.notes.replace(/\n/g, '<br>')}</p>
+                </div>
+            ` : '';
+    
+            const parametersTable = `
+                <table class="report-results-table">
+                    <thead>
+                        <tr>
+                            <th>التحليل</th>
+                            <th>النتيجة</th>
+                            <th>الوحدة</th>
+                            <th>النطاق المرجعي</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${(result.parameterResults || []).map(p => `
+                            <tr>
+                                <td>${p.name}</td>
+                                <td>${p.value}</td>
+                                <td>${p.unit}</td>
+                                <td>${p.refRange}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+    
+            return `
+            <div class="report-results-section">
+                <h3>${test.type} (بتاريخ ${new Date(test.date).toLocaleDateString('ar-EG')})</h3>
+                ${parametersTable}
+                ${notesHtml}
+            </div>
+            `;
+        }).join('');
+    
+        const reportContent = document.getElementById('report-content');
+        reportContent.innerHTML = `
+            <div class="report-header">
+                <div class="report-header-logo">
+                    <img src="${labSettings.logo}" alt="شعار المختبر">
+                </div>
+                <div class="report-header-info">
+                    <h2>${labSettings.name}</h2>
+                    <p>${labSettings.address}</p>
+                    <p>هاتف: ${labSettings.phone} | بريد إلكتروني: ${labSettings.email}</p>
+                </div>
+            </div>
+            <h2 class="report-title">تقرير نتائج مجمعة</h2>
+            <div class="report-patient-info">
+                <table>
+                    <tr><th>اسم المريض:</th><td>${patient.name}</td><th>العمر:</th><td>${patient.age}</td></tr>
+                    <tr><th>الجنس:</th><td>${patient.gender}</td><th>معرف المريض:</th><td>${patient.id}</td></tr>
+                </table>
+            </div>
+            ${resultsHtml}
+            <div class="report-footer">
+                <p>تاريخ إصدار التقرير: ${new Date().toLocaleString('ar-EG')}</p>
+                <p>مع تمنياتنا لكم بالشفاء العاجل</p>
+            </div>
+        `;
+        window.print();
+    };
+
     const handleEdit = (id, type) => {
         if (currentUserRole !== 'admin') {
             alert('ليس لديك الصلاحية للقيام بهذا الإجراء.');
@@ -915,8 +1408,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     alert('لا يمكن تعديل هذه النتيجة، تعريف الفحص المرتبط بها محذوف.');
                     return;
                 }
-                const paramResultsHtml = resTestDef.parameters.map(p => {
-                    const savedResult = item.parameterResults.find(pr => pr.name === p.name);
+                const paramResultsHtml = (resTestDef.parameters || []).map(p => {
+                    const savedResult = (item.parameterResults || []).find(pr => pr.name === p.name);
                     return `
                     <div class="parameter-entry-row" data-name="${p.name}" data-ref="${p.refRange}" data-unit="${p.unit || ''}">
                         <label>${p.name}</label>
@@ -932,18 +1425,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 `;
                 break;
             case 'test-definition':
-                const materialsHtml = item.materials.map(m => `
-                    <div class="consumed-material-item" data-id="${m.id}">
-                        <span>${inventory.find(i => i.id === m.id)?.name || 'محذوف'}</span>
-                        <input type="number" value="${m.quantity}" min="1" required>
-                        <input type="hidden" value="${m.id}">
-                        <button type="button" class="action-btn delete delete-material-item">X</button>
-                    </div>`).join('');
+                const materialsHtml = (item.materials || []).map(m => {
+                    const material = inventory.find(i => i.id === m.id);
+                    return `
+                    <div class="consumed-material-item" data-id="${m.id}" data-quantity="${m.quantity}">
+                        <span>${material ? material.name : 'مادة محذوفة'}</span>
+                        <span>الكمية: ${m.quantity} ${material ? (material.unit || '') : ''}</span>
+                    </div>`;
+                }).join('');
                 formHtml = `
                     <input type="text" id="editTestDefName" value="${item.name}" placeholder="اسم الفحص" required>
                     <div class="sub-form-container">
                         <h4>التحاليل الفرعية</h4>
-                        <div id="editTestDefParametersContainer">${item.parameters.map(p => `
+                        <div id="editTestDefParametersContainer">${(item.parameters || []).map(p => `
                             <div class="parameter-entry-row">
                                 <input type="text" class="param-name" value="${p.name}" required>
                                 <input type="text" class="param-ref" value="${p.refRange}" required>
@@ -955,10 +1449,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                     <div class="sub-form-container">
                         <h4>المواد المستهلكة</h4>
-                        <div class="add-material-controls">
-                            <div id="editTestDefMaterialSelectContainer"></div>
-                        </div>
                         <div id="editTestDefMaterialsList">${materialsHtml}</div>
+                        <button type="button" id="openEditMaterialsModalBtn" class="add-btn">اختيار المواد</button>
                     </div>`;
                 break;
         }
@@ -967,23 +1459,6 @@ document.addEventListener('DOMContentLoaded', () => {
         editForm.dataset.id = id;
         editForm.dataset.type = type;
         editModal.style.display = 'block';
-
-        if (type === 'test-definition') {
-            document.getElementById('addEditTestDefParamBtn').addEventListener('click', () => {
-                const container = document.getElementById('editTestDefParametersContainer');
-                const row = document.createElement('div');
-                row.className = 'parameter-entry-row';
-                row.innerHTML = `<input type="text" class="param-name" placeholder="اسم التحليل الفرعي" required> <input type="text" class="param-ref" placeholder="النطاق المرجعي" required> <input type="text" class="param-unit" placeholder="الوحدة"> <button type="button" class="remove-param-btn">X</button>`;
-                container.appendChild(row);
-            });
-            document.getElementById('editTestDefParametersContainer').addEventListener('click', e => {
-                if (e.target.classList.contains('remove-param-btn')) e.target.closest('.parameter-entry-row').remove();
-            });
-            document.getElementById('editTestDefMaterialSelectContainer').addEventListener('click', e => {
-                if (e.target.tagName === 'BUTTON') addMaterialFromSelector('editTestDefMaterialsList', e.target.previousElementSibling);
-            });
-            updateAvailableMaterials('editTestDefMaterialsList', 'editTestDefMaterialSelectContainer');
-        }
     };
 
     editForm.addEventListener('submit', e => {
@@ -1029,7 +1504,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 item.notes = document.getElementById('editResultNotes').value;
                 break;
             case 'test-definition':
-                item.name = document.getElementById('editTestDefName').value;
+                const oldName = item.name;
+                const newName = document.getElementById('editTestDefName').value.trim();
+            
+                if (!newName) {
+                    alert('اسم الفحص لا يمكن أن يكون فارغاً.');
+                    return;
+                }
+
+                if (newName.toLowerCase() !== oldName.toLowerCase() && testDefinitions.some(def => def.name.trim().toLowerCase() === newName.toLowerCase() && def.id !== id)) {
+                    alert('يوجد نوع تحليل آخر بنفس الاسم. الرجاء اختيار اسم فريد.');
+                    return;
+                }
+            
+                item.name = newName;
                 item.parameters = [];
                 document.querySelectorAll('#editTestDefParametersContainer .parameter-entry-row').forEach(paramRow => {
                     item.parameters.push({
@@ -1041,16 +1529,52 @@ document.addEventListener('DOMContentLoaded', () => {
                 item.materials = [];
                 document.querySelectorAll('#editTestDefMaterialsList .consumed-material-item').forEach(matItem => {
                     item.materials.push({
-                        id: matItem.querySelector('input[type="hidden"]').value,
-                        quantity: parseInt(matItem.querySelector('input[type="number"]').value)
+                        id: matItem.dataset.id,
+                        quantity: parseInt(matItem.dataset.quantity)
                     });
                 });
+            
+                if (oldName !== newName) {
+                    tests.forEach(t => {
+                        if (t.type === oldName) {
+                            t.type = newName;
+                        }
+                    });
+                    archive.forEach(a => {
+                        a.tests.forEach(t => {
+                            if (t.type === oldName) {
+                                t.type = newName;
+                            }
+                        });
+                    });
+                }
                 break;
         }
         
         saveData();
         renderAll();
         closeModal();
+    });
+
+    editForm.addEventListener('click', e => {
+        if (editForm.dataset.type !== 'test-definition') return;
+    
+        if (e.target.id === 'addEditTestDefParamBtn') {
+            const container = document.getElementById('editTestDefParametersContainer');
+            const row = document.createElement('div');
+            row.className = 'parameter-entry-row';
+            row.innerHTML = `<input type="text" class="param-name" placeholder="اسم التحليل الفرعي" required> <input type="text" class="param-ref" placeholder="النطاق المرجعي" required> <input type="text" class="param-unit" placeholder="الوحدة"> <button type="button" class="remove-param-btn">X</button>`;
+            container.appendChild(row);
+        }
+    
+        if (e.target.classList.contains('remove-param-btn')) {
+            e.target.closest('.parameter-entry-row').remove();
+        }
+    
+        if (e.target.id === 'openEditMaterialsModalBtn') {
+            materialListTargetId = 'editTestDefMaterialsList';
+            openMaterialsModal();
+        }
     });
 
     const closeModal = () => { editModal.style.display = 'none'; };
@@ -1062,10 +1586,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const term = searchInput.value.toLowerCase();
         const activeSectionId = document.querySelector('.content-section.active')?.id;
         
-        const data = { patients, tests, results, inventory, 'test-definitions': testDefinitions, consumed: consumedLog };
+        if (!activeSectionId) return;
+
+        const data = { patients, tests, results, inventory, 'test-definitions': testDefinitions, consumed: consumedLog, archive: archive };
 
         const filterFunctions = {
-            patients: d => d.filter(p => p.name.toLowerCase().includes(term) || p.phone.includes(term) || (p.nationalId && p.nationalId.toLowerCase().includes(term))),
+            patients: d => d.filter(p => p.name.toLowerCase().includes(term) || (p.phone || '').includes(term) || (p.nationalId && p.nationalId.toLowerCase().includes(term))),
             tests: d => d.filter(t => {
                 const p = patients.find(p => p.id === t.patientId);
                 return t.type.toLowerCase().includes(term) || (p && p.name.toLowerCase().includes(term));
@@ -1077,7 +1603,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }),
             consumed: d => d.filter(log => log.materialName.toLowerCase().includes(term) || log.testType.toLowerCase().includes(term) || log.testId.toLowerCase().includes(term)),
             inventory: d => d.filter(i => i.name.toLowerCase().includes(term)),
-            'test-definitions': d => d.filter(def => def.name.toLowerCase().includes(term) || def.parameters.some(p => p.name.toLowerCase().includes(term))),
+            'test-definitions': d => d.filter(def => def.name.toLowerCase().includes(term) || (def.parameters || []).some(p => p.name.toLowerCase().includes(term))),
+            archive: d => d.filter(item => item.patient.name.toLowerCase().includes(term))
         };
 
         const renderFunctions = {
@@ -1086,7 +1613,8 @@ document.addEventListener('DOMContentLoaded', () => {
             results: renderResults,
             inventory: renderInventory,
             'test-definitions': renderTestDefinitions,
-            consumed: renderConsumedLog
+            consumed: renderConsumedLog,
+            archive: renderArchive
         };
 
         if(filterFunctions[activeSectionId]) {
@@ -1098,7 +1626,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- CHART FUNCTIONS ---
     const updateTestsStatusChart = () => {
         const ctx = document.getElementById('testsStatusChart')?.getContext('2d');
-        if (!ctx) return; // Don't run if not on dashboard
+        if (!ctx) return;
     
         if (testsStatusChartInstance) {
             testsStatusChartInstance.destroy();
@@ -1115,27 +1643,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 datasets: [{
                     label: 'حالة الفحوصات',
                     data: [completedCount, pendingCount],
-                    backgroundColor: [
-                        'rgba(46, 204, 113, 0.7)', // success-color
-                        'rgba(231, 76, 60, 0.7)'   // danger-color
-                    ],
-                    borderColor: [
-                        'rgba(46, 204, 113, 1)',
-                        'rgba(231, 76, 60, 1)'
-                    ],
+                    backgroundColor: ['rgba(46, 204, 113, 0.7)', 'rgba(231, 76, 60, 0.7)'],
+                    borderColor: ['rgba(46, 204, 113, 1)', 'rgba(231, 76, 60, 1)'],
                     borderWidth: 1
                 }]
             },
             options: {
                 responsive: true,
-                plugins: {
-                    legend: {
-                        position: 'top',
-                        labels: {
-                            color: textColor
-                        }
-                    }
-                }
+                plugins: { legend: { position: 'top', labels: { color: textColor } } }
             }
         });
     };
@@ -1165,7 +1680,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 datasets: [{
                     label: 'عدد الفحوصات',
                     data: data,
-                    backgroundColor: 'rgba(74, 144, 226, 0.7)', // primary-color
+                    backgroundColor: 'rgba(74, 144, 226, 0.7)',
                     borderColor: 'rgba(74, 144, 226, 1)',
                     borderWidth: 1
                 }]
@@ -1183,7 +1698,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- EXPORT TO CSV ---
     const exportToCsv = (filename, rows) => {
-        const BOM = "\uFEFF"; // For UTF-8 support in Excel
+        const BOM = "\uFEFF";
         const csvContent = BOM + rows.map(row => row.join(',')).join('\n');
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement("a");
@@ -1235,12 +1750,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 .filter(log => log.materialId === i.id)
                 .reduce((sum, log) => sum + log.quantity, 0);
             return [
-                sanitizeCsvField(i.id),
-                sanitizeCsvField(i.name),
-                sanitizeCsvField(totalConsumed),
-                sanitizeCsvField(i.currentStock),
-                sanitizeCsvField(i.unit),
-                sanitizeCsvField(i.reorderLevel)
+                sanitizeCsvField(i.id), sanitizeCsvField(i.name), sanitizeCsvField(totalConsumed),
+                sanitizeCsvField(i.currentStock), sanitizeCsvField(i.unit), sanitizeCsvField(i.reorderLevel)
             ];
         });
         exportToCsv("inventory_data.csv", [headers, ...dataRows]);
@@ -1248,41 +1759,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
     exportConsumedBtn.addEventListener('click', () => {
         const headers = ["اسم المادة", "الكمية المستهلكة", "الوحدة", "نوع الفحص", "معرف الفحص", "تاريخ الاستهلاك"];
-        
         const dataRows = consumedLog.map(log => [
-            sanitizeCsvField(log.materialName),
-            sanitizeCsvField(log.quantity),
-            sanitizeCsvField(log.unit),
-            sanitizeCsvField(log.testType),
-            sanitizeCsvField(log.testId),
-            sanitizeCsvField(new Date(log.date).toLocaleString('ar-EG'))
+            sanitizeCsvField(log.materialName), sanitizeCsvField(log.quantity), sanitizeCsvField(log.unit),
+            sanitizeCsvField(log.testType), sanitizeCsvField(log.testId), sanitizeCsvField(new Date(log.date).toLocaleString('ar-EG'))
         ]);
-    
         exportToCsv("consumed_log.csv", [headers, ...dataRows]);
     });
 
     exportResultsBtn.addEventListener('click', () => {
         const headers = ["معرف النتيجة", "معرف الفحص", "اسم المريض", "نوع الفحص", "تفاصيل النتيجة", "ملاحظات", "تاريخ الإدخال"];
-        
         const dataRows = results.map(r => {
             const test = tests.find(t => t.id === r.testId);
             const patient = test ? patients.find(p => p.id === test.patientId) : null;
-    
             const patientName = patient ? patient.name : 'غير متوفر';
             const testType = test ? test.type : 'غير متوفر';
             const resultDate = new Date(r.date).toLocaleDateString();
-    
             return [
-                sanitizeCsvField(r.id),
-                sanitizeCsvField(r.testId),
-                sanitizeCsvField(patientName),
-                sanitizeCsvField(testType),
-                sanitizeCsvField(r.parameterResults.map(p => `${p.name}: ${p.value}`).join('; ')),
-                sanitizeCsvField(r.notes),
-                sanitizeCsvField(resultDate)
+                sanitizeCsvField(r.id), sanitizeCsvField(r.testId), sanitizeCsvField(patientName),
+                sanitizeCsvField(testType), sanitizeCsvField((r.parameterResults || []).map(p => `${p.name}: ${p.value}`).join('; ')),
+                sanitizeCsvField(r.notes), sanitizeCsvField(resultDate)
             ];
         });
-    
         exportToCsv("results_data.csv", [headers, ...dataRows]);
     });
 
@@ -1294,16 +1791,19 @@ document.addEventListener('DOMContentLoaded', () => {
         renderResults();
         renderTestDefinitions();
         renderConsumedLog();
+        renderArchive();
+        renderTodayCases();
         updateDashboard();
     };
 
-    backToPatientsBtn.addEventListener('click', () => {
+    const defaultBackToPatients = () => {
         patientProfileSection.classList.remove('active');
         const patientsSection = document.getElementById('patients');
         patientsSection.classList.add('active');
         headerTitle.textContent = 'إدارة المرضى';
-        renderPatients(); // Re-render to ensure it's up-to-date
-    });
+        renderPatients();
+    };
+    backToPatientsBtn.addEventListener('click', defaultBackToPatients);
 
     const updateSidebarHeader = () => {
         const sidebarLabName = document.getElementById('sidebarLabName');
@@ -1322,12 +1822,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (storedRole) {
             completeLogin(storedRole);
         } else {
-            // Show login modal and hide app
             loginModal.style.display = 'flex';
             mainContainer.style.visibility = 'hidden';
         }
     };
 
-    // Start the application by checking login status
     checkLogin();
 });

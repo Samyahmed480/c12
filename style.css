@@ -373,7 +373,8 @@ body.user-role .action-btn.delete {
 body.user-role #inventory-nav,
 body.user-role a[href="#test-definitions"],
 body.user-role #consumed-nav,
-body.user-role #settings-nav {
+body.user-role #settings-nav,
+body.user-role #archive-nav {
     display: none;
 }
 
@@ -463,6 +464,50 @@ body.user-role #settings-nav {
     padding: 8px 15px;
 }
 
+.modal-content.wide {
+    max-width: 700px;
+}
+
+.modal-list-container {
+    max-height: 40vh;
+    overflow-y: auto;
+    border: 1px solid var(--border-color);
+    padding: 10px;
+    margin-bottom: 15px;
+}
+
+.material-modal-item {
+    display: grid;
+    grid-template-columns: auto 1fr 100px;
+    gap: 15px;
+    align-items: center;
+    padding: 8px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.material-modal-item:last-child {
+    border-bottom: none;
+}
+
+.material-modal-item input[type="checkbox"] {
+    width: auto;
+}
+
+.material-modal-item input[type="number"] {
+    padding: 5px;
+}
+
+.modal-confirm-btn {
+    width: 100%;
+    padding: 12px;
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+}
+
 .logo-upload-container,
 .sub-form-container {
     grid-column: 1 / -1;
@@ -504,6 +549,15 @@ body.user-role #settings-nav {
     grid-template-columns: 1.5fr 1fr 0.5fr 1fr;
     padding: 10px;
     border-bottom: 1px solid var(--border-color);
+}
+
+#testDefMaterialsList .consumed-material-item,
+#editTestDefMaterialsList .consumed-material-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 5px;
+    background-color: var(--secondary-color);
+    border-radius: 4px;
 }
 
 /* Styles for the printable report */
