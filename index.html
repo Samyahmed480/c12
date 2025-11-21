@@ -25,6 +25,7 @@
                 <a href="#test-definitions" class="menu-item">أنواع التحاليل</a>
                 <a href="#inventory" class="menu-item" id="inventory-nav">إدارة المخزون</a>
                 <a href="#consumed" class="menu-item" id="consumed-nav">المستهلكات</a>
+                <a href="#users" class="menu-item" id="users-nav">إدارة المستخدمين</a>
                 <a href="#settings" class="menu-item" id="settings-nav">الإعدادات</a>
                 <a href="#archive" class="menu-item" id="archive-nav">الأرشيف</a>
                 <a href="#" id="logoutBtn" class="menu-item">تسجيل الخروج</a>
@@ -135,7 +136,7 @@
                 <table id="patientsTable">
                     <thead>
                         <tr>
-                            <th>المعرف</th>
+                            <th>الرقم التسلسلي</th>
                             <th>الرقم الوطني</th>
                             <th>الاسم</th>
                             <th>العمر</th>
@@ -292,7 +293,7 @@
                 <table id="inventoryTable">
                     <thead>
                         <tr>
-                            <th>المعرف</th>
+                            <th>الرقم التسلسلي</th>
                             <th>اسم المادة</th>
                             <th>الكمية المستهلكة</th>
                             <th>الكمية الحالية (الوحدة)</th>
@@ -365,6 +366,29 @@
                 </div>
             </section>
 
+            <!-- Users Section -->
+            <section id="users" class="content-section">
+                <h2>إدارة المستخدمين</h2>
+                <form id="userForm">
+                    <input type="text" id="username" placeholder="اسم المستخدم" required>
+                    <input type="password" id="userPassword" placeholder="كلمة المرور" required>
+                    <textarea id="userAdminNotes" placeholder="ملاحظات المدير (خاصة)"></textarea>
+                    <div class="sub-form-container">
+                        <h4>صلاحيات المستخدم</h4>
+                        <div id="userPermissionsContainer" class="checkbox-container">
+                            <!-- Permissions will be injected here by JS -->
+                        </div>
+                    </div>
+                    <button type="submit">إنشاء مستخدم جديد</button>
+                </form>
+                <hr>
+                <h2>قائمة المستخدمين</h2>
+                <table id="usersTable">
+                    <thead><tr><th>اسم المستخدم</th><th>الصلاحيات</th><th>ملاحظات المدير</th><th>إجراءات</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </section>
+
             <!-- Archive Section -->
             <section id="archive" class="content-section">
                 <h2>الأرشيف</h2>
@@ -418,11 +442,11 @@
     <div id="loginModal" class="modal">
         <div class="modal-content">
             <h2>تسجيل الدخول</h2>
-            <p>الرجاء إدخال كلمة مرور المدير للوصول الكامل، أو الدخول كزائر بصلاحيات محدودة.</p>
+            <p>الرجاء إدخال اسم المستخدم وكلمة المرور للوصول إلى النظام.</p>
             <form id="loginForm">
-                <input type="password" id="passwordInput" placeholder="كلمة المرور" autofocus>
-                <button type="submit">دخول كمدير</button>
-                <button type="button" id="guestLoginBtn">الدخول كزائر</button>
+                <input type="text" id="loginUsername" placeholder="اسم المستخدم" required autofocus>
+                <input type="password" id="passwordInput" placeholder="كلمة المرور" required>
+                <button type="submit">تسجيل الدخول</button>
             </form>
         </div>
     </div>

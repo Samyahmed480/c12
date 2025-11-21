@@ -7,17 +7,50 @@ document.addEventListener('DOMContentLoaded', () => {
     let testDefinitions = JSON.parse(localStorage.getItem('testDefinitions')) || [];
     let consumedLog = JSON.parse(localStorage.getItem('consumedLog')) || [];
     let archive = JSON.parse(localStorage.getItem('archive')) || [];
+    let users = JSON.parse(localStorage.getItem('users')) || [];
     let labSettings = JSON.parse(localStorage.getItem('labSettings')) || {
         name: 'اسم المختبر',
         address: 'العنوان هنا',
         phone: 'رقم الهاتف هنا',
         email: 'البريد الإلكتروني هنا',
         logo: 'images/logo.png',
-        archiveAfterDays: 30
+        archiveAfterDays: 30,
     };
 
+    // Initialize default admin if no users exist
+    if (users.length === 0) {
+        users.push({
+            id: 'admin',
+            username: 'admin',
+            password: 'admin123',
+            isDefaultAdmin: true, // To prevent deletion
+            permissions: {} // Admin has all permissions implicitly
+        });
+        localStorage.setItem('users', JSON.stringify(users));
+    }
+
+    // Initialize counters for sequential IDs if they don't exist
+    labSettings.nextTestId = labSettings.nextTestId || 1;
+    labSettings.nextResultId = labSettings.nextResultId || 1;
+
     // Role-based access control
-    let currentUserRole = 'user';
+    let currentUser = null;
+
+    const PERMISSIONS = {
+        canViewDashboard: 'عرض لوحة التحكم',
+        canViewTodayCases: 'عرض حالات اليوم',
+        canViewPatients: 'عرض قائمة المرضى',
+        canEditAddDeletePatients: 'إدارة المرضى (إضافة/تعديل/حذف)',
+        canManageTests: 'إدارة الفحوصات (إضافة/تعديل/حذف)',
+        canWriteResults: 'كتابة النتائج',
+        canPrintReports: 'طباعة التقارير',
+        canManageTestDefs: 'إدارة أنواع التحاليل',
+        canManageInventory: 'إدارة المخزون',
+        canViewConsumed: 'عرض المستهلكات',
+        canManageSettings: 'إدارة الإعدادات والنسخ الاحتياطي',
+        canViewArchive: 'عرض الأرشيف واستعادته',
+        canManageUsers: 'إدارة المستخدمين'
+    };
 
     // Chart instances
     let testsStatusChartInstance = null;
@@ -44,6 +77,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const testDefinitionForm = document.getElementById('testDefinitionForm');
     const settingsForm = document.getElementById('settingsForm');
     const archiveDaysInput = document.getElementById('archiveDays');
+    const userForm = document.getElementById('userForm');
     const archiveNowBtn = document.getElementById('archiveNowBtn');
 
     // Tables
@@ -53,6 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const resultsTableBody = document.querySelector('#resultsTable tbody');
     const testDefinitionsTableBody = document.querySelector('#testDefinitionsTable tbody');
     const consumedTableBody = document.querySelector('#consumedTable tbody');
+    const usersTableBody = document.querySelector('#usersTable tbody');
     const archiveTableBody = document.querySelector('#archiveTable tbody');
 
     const addTestDefParamBtn = document.getElementById('addTestDefParamBtn');
@@ -93,8 +128,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const closeBtn = document.querySelector('.close-btn');
     const loginModal = document.getElementById('loginModal');
     const loginForm = document.getElementById('loginForm');
+    const loginUsernameInput = document.getElementById('loginUsername');
     const passwordInput = document.getElementById('passwordInput');
-    const guestLoginBtn = document.getElementById('guestLoginBtn');
 
     // Export Buttons
     const exportPatientsBtn = document.getElementById('exportPatientsBtn');
@@ -108,25 +143,53 @@ document.addEventListener('DOMContentLoaded', () => {
     const restoreInput = document.getElementById('restoreInput');
 
     // --- LOGIN & ROLE MANAGEMENT ---
-    const completeLogin = (role) => {
-        currentUserRole = role;
-        sessionStorage.setItem('userRole', currentUserRole);
-
-        if (currentUserRole === 'user') {
-            body.classList.add('user-role');
-            alert('تم تسجيل الدخول كمستخدم عادي. صلاحيات التعديل والحذف معطلة.');
-        } else {
-            body.classList.remove('user-role');
-            alert('مرحباً أيها المدير! تم منح الوصول الكامل.');
-            runArchivingProcess(false); // Run archiving on login, silently
+    const checkPermission = (permissionKey) => {
+        if (!currentUser || !permissionKey) {
+            return false;
         }
+        // The default admin has all permissions implicitly
+        if (currentUser.isDefaultAdmin) {
+            return true;
+        }
+        return !!currentUser.permissions[permissionKey];
+    };
+
+    const applyPermissions = () => {
+        // Hide/show nav links
+        document.querySelector('a[href="#dashboard"]').style.display = checkPermission('canViewDashboard') ? 'block' : 'none';
+        document.querySelector('a[href="#today-cases"]').style.display = checkPermission('canViewTodayCases') ? 'block' : 'none';
+        document.querySelector('a[href="#patients"]').style.display = checkPermission('canViewPatients') ? 'block' : 'none';
+        document.querySelector('a[href="#tests"]').style.display = checkPermission('canManageTests') ? 'block' : 'none';
+        document.querySelector('a[href="#results"]').style.display = checkPermission('canWriteResults') ? 'block' : 'none';
+        document.getElementById('inventory-nav').style.display = checkPermission('canManageInventory') ? 'block' : 'none';
+        document.querySelector('a[href="#test-definitions"]').style.display = checkPermission('canManageTestDefs') ? 'block' : 'none';
+        document.getElementById('consumed-nav').style.display = checkPermission('canViewConsumed') ? 'block' : 'none';
+        document.getElementById('settings-nav').style.display = checkPermission('canManageSettings') ? 'block' : 'none';
+        document.getElementById('archive-nav').style.display = checkPermission('canViewArchive') ? 'block' : 'none';
+        document.getElementById('users-nav').style.display = checkPermission('canManageUsers') ? 'block' : 'none';
+
+        // Hide/show forms and major action buttons
+        document.getElementById('patientForm').style.display = checkPermission('canEditAddDeletePatients') ? 'grid' : 'none';
+        document.getElementById('printTodayReportBtn').style.display = checkPermission('canPrintReports') ? 'inline-block' : 'none';
+        document.getElementById('printSelectedTestsBtn').style.display = checkPermission('canPrintReports') ? 'inline-block' : 'none';
+    };
+
+    const completeLogin = (user) => {
+        currentUser = user;
+        sessionStorage.setItem('currentUser', JSON.stringify(currentUser));
 
         loginModal.style.display = 'none';
         mainContainer.style.visibility = 'visible';
 
         applyTheme(localStorage.getItem('theme') || 'light');
+        applyPermissions();
         updateSidebarHeader();
         renderAll();
+
+        if (checkPermission('canManageSettings')) {
+            runArchivingProcess(false); // Run archiving on login, silently
+        }
+
         const lowStockCount = inventory.filter(i => i.currentStock <= i.reorderLevel).length;
         if (lowStockCount > 0) {
             alert(`تنبيه: يوجد ${lowStockCount} مادة في المخزون وصلت إلى حد إعادة الطلب أو أقل.`);
@@ -135,21 +198,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
     loginForm.addEventListener('submit', (e) => {
         e.preventDefault();
-        if (passwordInput.value === 'admin123') {
-            completeLogin('admin');
+        const username = loginUsernameInput.value.trim();
+        const password = passwordInput.value;
+
+        const foundUser = users.find(u => u.username === username && u.password === password);
+
+        if (foundUser) {
+            completeLogin(foundUser);
         } else {
-            alert('كلمة المرور غير صحيحة.');
+            alert('اسم المستخدم أو كلمة المرور غير صحيحة.');
             passwordInput.value = '';
         }
     });
 
-    guestLoginBtn.addEventListener('click', () => {
-        completeLogin('user');
-    });
-
     logoutBtn.addEventListener('click', (e) => {
         e.preventDefault();
-        sessionStorage.removeItem('userRole');
+        sessionStorage.removeItem('currentUser');
         window.location.reload();
     });
 
@@ -167,6 +231,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- DATA SAVING ---
     const saveData = () => {
+        localStorage.setItem('users', JSON.stringify(users));
         localStorage.setItem('patients', JSON.stringify(patients));
         localStorage.setItem('tests', JSON.stringify(tests));
         localStorage.setItem('inventory', JSON.stringify(inventory));
@@ -179,9 +244,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- RENDERING FUNCTIONS ---
     const renderPatients = (data = patients) => {
-        patientsTableBody.innerHTML = data.map(p => `
+        const canEditDelete = checkPermission('canEditAddDeletePatients');
+        patientsTableBody.innerHTML = data.map((p, index) => `
             <tr>
-                <td>${p.id}</td>
+                <td>${index + 1}</td>
                 <td>${p.nationalId || 'غير مسجل'}</td>
                 <td>${p.name}</td>
                 <td>${p.age}</td>
@@ -189,8 +255,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${p.phone}</td>
                 <td>${p.record}</td>
                 <td>
-                    <button class="action-btn edit" data-id="${p.id}" data-type="patient">تعديل</button>
-                    <button class="action-btn delete" data-id="${p.id}" data-type="patient">حذف</button>
+                    ${canEditDelete ? `<button class="action-btn edit" data-id="${p.id}" data-type="patient">تعديل</button>` : ''}
+                    ${canEditDelete ? `<button class="action-btn delete" data-id="${p.id}" data-type="patient">حذف</button>` : ''}
                 </td>
                 <td>
                     <button class="action-btn view" data-id="${p.id}" data-type="patient-profile">عرض الملف</button>
@@ -200,6 +266,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const renderTests = (data = tests) => {
+        const canEditDelete = checkPermission('canManageTests');
         testsTableBody.innerHTML = data.map(t => {
             const patient = patients.find(p => p.id === t.patientId);
             return `
@@ -210,8 +277,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${new Date(t.date).toLocaleDateString()}</td>
                 <td>${t.status}</td>
                 <td>
-                    <button class="action-btn edit" data-id="${t.id}" data-type="test">تعديل</button>
-                    <button class="action-btn delete" data-id="${t.id}" data-type="test">حذف</button>
+                    ${canEditDelete ? `<button class="action-btn edit" data-id="${t.id}" data-type="test">تعديل</button>` : ''}
+                    ${canEditDelete ? `<button class="action-btn delete" data-id="${t.id}" data-type="test">حذف</button>` : ''}
                 </td>
             </tr>`;
         }).join('');
@@ -219,6 +286,8 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     
     const renderResults = (data = results) => {
+        const canEditDelete = checkPermission('canWriteResults');
+        const canPrint = checkPermission('canPrintReports');
         resultsTableBody.innerHTML = data.map(r => {
             const test = tests.find(t => t.id === r.testId);
             const patient = test ? patients.find(p => p.id === test.patientId) : null;
@@ -230,36 +299,38 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td title="${r.notes || ''}">${(r.notes || '').substring(0, 20)}${ (r.notes || '').length > 20 ? '...' : ''}</td>
                 <td>${new Date(r.date).toLocaleDateString()}</td>
                 <td>
-                    <button class="action-btn edit" data-id="${r.id}" data-type="result">تعديل</button>
-                    <button class="action-btn delete" data-id="${r.id}" data-type="result">حذف</button>
-                    <button class="action-btn print" data-id="${r.id}">طباعة</button>
+                    ${canEditDelete ? `<button class="action-btn edit" data-id="${r.id}" data-type="result">تعديل</button>` : ''}
+                    ${canEditDelete ? `<button class="action-btn delete" data-id="${r.id}" data-type="result">حذف</button>` : ''}
+                    ${canPrint ? `<button class="action-btn print" data-id="${r.id}">طباعة</button>` : ''}
                 </td>
             </tr>`;
         }).join('');
     };
 
     const renderInventory = (data = inventory) => {
-        inventoryTableBody.innerHTML = data.map(i => {
+        const canEditDelete = checkPermission('canManageInventory');
+        inventoryTableBody.innerHTML = data.map((i, index) => {
             const totalConsumed = consumedLog
                 .filter(log => log.materialId === i.id)
                 .reduce((sum, log) => sum + log.quantity, 0);
 
             return `
             <tr class="${i.currentStock <= i.reorderLevel ? 'low-stock' : ''}">
-                <td>${i.id}</td>
+                <td>${index + 1}</td>
                 <td>${i.name}</td>
                 <td>${totalConsumed} ${i.unit || ''}</td>
                 <td>${i.currentStock} ${i.unit || ''}</td>
                 <td>${i.reorderLevel}</td>
                 <td>
-                    <button class="action-btn edit" data-id="${i.id}" data-type="inventory">تعديل</button>
-                    <button class="action-btn delete" data-id="${i.id}" data-type="inventory">حذف</button>
+                    ${canEditDelete ? `<button class="action-btn edit" data-id="${i.id}" data-type="inventory">تعديل</button>` : ''}
+                    ${canEditDelete ? `<button class="action-btn delete" data-id="${i.id}" data-type="inventory">حذف</button>` : ''}
                 </td>
             </tr>`;
         }).join('');
     };
 
     const renderTestDefinitions = (data = testDefinitions) => {
+        const canEditDelete = checkPermission('canManageTestDefs');
         testDefinitionsTableBody.innerHTML = data.map(def => {
             const parametersHtml = (def.parameters || []).map(p => `<li>${p.name} (${p.refRange} ${p.unit || ''})</li>`).join('');
             const materialsHtml = (def.materials || []).map(m => {
@@ -273,8 +344,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td><ul class="material-list">${parametersHtml || 'لا يوجد'}</ul></td>
                 <td><ul class="material-list">${materialsHtml || 'لا يوجد'}</ul></td>
                 <td>
-                    <button class="action-btn edit" data-id="${def.id}" data-type="test-definition">تعديل</button>
-                    <button class="action-btn delete" data-id="${def.id}" data-type="test-definition">حذف</button>
+                    ${canEditDelete ? `<button class="action-btn edit" data-id="${def.id}" data-type="test-definition">تعديل</button>` : ''}
+                    ${canEditDelete ? `<button class="action-btn delete" data-id="${def.id}" data-type="test-definition">حذف</button>` : ''}
                 </td>
             </tr>`;
         }).join('');
@@ -282,6 +353,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const renderArchive = (data = archive) => {
+        const canRestore = checkPermission('canViewArchive');
         archiveTableBody.innerHTML = data.map(item => `
             <tr>
                 <td>${new Date(item.archivedDate).toLocaleDateString('ar-EG')}</td>
@@ -289,11 +361,38 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${item.tests.length}</td>
                 <td>
                     <button class="action-btn view" data-id="${item.archiveId}" data-type="archive-view">عرض</button>
-                    <button class="action-btn edit" data-id="${item.archiveId}" data-type="archive-restore" style="background-color: #16a085;">استعادة</button>
+                    ${canRestore ? `<button class="action-btn edit" data-id="${item.archiveId}" data-type="archive-restore" style="background-color: #16a085;">استعادة</button>` : ''}
                 </td>
             </tr>
         `).join('');
     };
+
+    const renderUsers = (data = users) => {
+        if (!checkPermission('canManageUsers')) return;
+        usersTableBody.innerHTML = data
+            .filter(u => !u.isDefaultAdmin) // Don't show the default admin
+            .map(u => {
+                const permissionsList = Object.keys(u.permissions)
+                    .filter(pKey => u.permissions[pKey])
+                    .map(pKey => `<li>${PERMISSIONS[pKey] || pKey}</li>`)
+                    .join('');
+                
+                const notes = u.adminNotes || '';
+                const truncatedNotes = notes.substring(0, 30) + (notes.length > 30 ? '...' : '');
+
+                return `
+                <tr>
+                    <td>${u.username}</td>
+                    <td><ul class="material-list">${permissionsList || 'لا يوجد'}</ul></td>
+                    <td title="${notes}">${truncatedNotes}</td>
+                    <td>
+                        <button class="action-btn edit" data-id="${u.id}" data-type="user">تعديل</button>
+                        <button class="action-btn delete" data-id="${u.id}" data-type="user">حذف</button>
+                    </td>
+                </tr>`;
+        }).join('');
+    };
+
 
     const renderConsumedLog = (data = consumedLog) => {
         const sortedData = data.sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -365,6 +464,22 @@ document.addEventListener('DOMContentLoaded', () => {
         `).join('');
     };
 
+    const populateUserPermissions = () => {
+        if (!checkPermission('canManageUsers')) return;
+        const container = document.getElementById('userPermissionsContainer');
+        if (!container) return;
+        container.innerHTML = Object.keys(PERMISSIONS).map(key => {
+            // Admin can't grant user management permission to others to avoid lockouts
+            if (key === 'canManageUsers') return ''; 
+            return `
+                <label>
+                    <input type="checkbox" name="permission" value="${key}" checked>
+                    ${PERMISSIONS[key]}
+                </label>
+            `;
+        }).join('');
+    };
+
     testTypeSearchInput.addEventListener('keyup', () => {
         const searchTerm = testTypeSearchInput.value.toLowerCase();
         const testTypeLabels = document.querySelectorAll('#testTypesContainer label');
@@ -392,11 +507,22 @@ document.addEventListener('DOMContentLoaded', () => {
             if(item.id === 'logoutBtn') return;
             e.preventDefault();
             const targetId = item.getAttribute('href').substring(1);
+            const permissionMap = {
+                'dashboard': 'canViewDashboard',
+                'today-cases': 'canViewTodayCases',
+                'patients': 'canViewPatients',
+                'tests': 'canManageTests',
+                'results': 'canWriteResults',
+                'inventory': 'canManageInventory',
+                'test-definitions': 'canManageTestDefs',
+                'consumed': 'canViewConsumed',
+                'settings': 'canManageSettings',
+                'archive': 'canViewArchive',
+                'users': 'canManageUsers'
+            };
 
-            const adminSections = ['inventory', 'test-definitions', 'consumed', 'settings', 'archive'];
-            if (adminSections.includes(targetId) && currentUserRole !== 'admin') {
+            if (permissionMap[targetId] && !checkPermission(permissionMap[targetId])) {
                 alert('ليس لديك الصلاحية للوصول إلى هذا القسم.');
-                document.querySelector('a[href="#dashboard"]').click();
                 return;
             }
             menuItems.forEach(i => i.classList.remove('active'));
@@ -410,6 +536,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (targetId === 'settings') {
                 renderSettingsPage();
             }
+            if (targetId === 'users') {
+                populateUserPermissions();
+            }
+
             renderAll();
         });
     });
@@ -417,6 +547,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- FORM SUBMISSIONS ---
     patientForm.addEventListener('submit', e => {
         e.preventDefault();
+        if (!checkPermission('canEditAddDeletePatients')) {
+            alert('ليس لديك الصلاحية للقيام بهذا الإجراء.');
+            return;
+        }
         const nationalId = document.getElementById('patientNationalId').value;
         if (nationalId && patients.some(p => p.nationalId === nationalId)) {
             alert('الرقم الوطني مسجل بالفعل لمريض آخر.');
@@ -440,6 +574,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     testForm.addEventListener('submit', e => {
         e.preventDefault();
+        if (!checkPermission('canManageTests')) {
+            alert('ليس لديك الصلاحية للقيام بهذا الإجراء.');
+            return;
+        }
         const patientId = document.getElementById('testPatientId').value;
         const selectedTests = document.querySelectorAll('#testTypesContainer input[name="testType"]:checked');
 
@@ -456,7 +594,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const newTests = [];
         selectedTests.forEach(checkbox => {
             newTests.push({
-                id: `T${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+                id: labSettings.nextTestId++,
                 patientId: patientId,
                 type: checkbox.value,
                 status: 'معلق',
@@ -473,6 +611,10 @@ document.addEventListener('DOMContentLoaded', () => {
     
     inventoryForm.addEventListener('submit', e => {
         e.preventDefault();
+        if (!checkPermission('canManageInventory')) {
+            alert('ليس لديك الصلاحية للقيام بهذا الإجراء.');
+            return;
+        }
         inventory.push({
             id: `I${Date.now()}`,
             name: document.getElementById('itemName').value,
@@ -488,6 +630,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     testDefinitionForm.addEventListener('submit', e => {
         e.preventDefault();
+        if (!checkPermission('canManageTestDefs')) {
+            alert('ليس لديك الصلاحية للقيام بهذا الإجراء.');
+            return;
+        }
         const materials = [];
         document.querySelectorAll('#testDefMaterialsList .consumed-material-item').forEach(matItem => {
             materials.push({
@@ -536,12 +682,55 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('testDefParametersContainer').innerHTML = '';
     });
 
+    userForm.addEventListener('submit', e => {
+        e.preventDefault();
+        if (!checkPermission('canManageUsers')) {
+            alert('ليس لديك الصلاحية للقيام بهذا الإجراء.');
+            return;
+        }
+        const username = document.getElementById('username').value.trim();
+        const password = document.getElementById('userPassword').value;
+        const adminNotes = document.getElementById('userAdminNotes').value;
+
+        if (users.some(u => u.username.toLowerCase() === username.toLowerCase())) {
+            alert('اسم المستخدم هذا موجود بالفعل.');
+            return;
+        }
+        if (password.length < 4) {
+            alert('يجب أن تكون كلمة المرور 4 أحرف على الأقل.');
+            return;
+        }
+
+        const permissions = {};
+        document.querySelectorAll('#userPermissionsContainer input:checked').forEach(cb => {
+            permissions[cb.value] = true;
+        });
+
+        users.push({
+            id: `U${Date.now()}`,
+            username,
+            password, // NOTE: In a real app, hash this password!
+            permissions,
+            adminNotes: adminNotes
+        });
+
+        saveData();
+        renderUsers();
+        userForm.reset();
+        alert('تم إنشاء المستخدم بنجاح.');
+    });
+
     resultForm.addEventListener('submit', e => {
         e.preventDefault();
-        const testId = document.getElementById('resultTestId').value;
+        const testId = parseInt(document.getElementById('resultTestId').value);
         const test = tests.find(t => t.id === testId);
         if (!test) return;
         const testDef = testDefinitions.find(def => def.name === test.type);
+
+        if (!checkPermission('canWriteResults')) {
+            alert('ليس لديك الصلاحية للقيام بهذا الإجراء.');
+            return;
+        }
 
         if (!testDef) {
             alert('خطأ: تعريف هذا التحليل غير موجود. لا يمكن تحديد المواد المستهلكة.');
@@ -584,7 +773,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         results.push({
-            id: `R${Date.now()}`,
+            id: labSettings.nextResultId++,
             testId: testId,
             parameterResults: parameterResults,
             notes: document.getElementById('resultNotes').value,
@@ -602,7 +791,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- AUTO-POPULATE RESULT FORM ---
     document.getElementById('resultTestId').addEventListener('change', e => {
-        const testId = e.target.value;
+        const testId = parseInt(e.target.value);
         const test = tests.find(t => t.id === testId);
         resultParametersContainer.innerHTML = '';
         if (!test) return;
@@ -757,6 +946,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     settingsForm.addEventListener('submit', (e) => {
         e.preventDefault();
+        if (!checkPermission('canManageSettings')) {
+            alert('ليس لديك الصلاحية للقيام بهذا الإجراء.');
+            return;
+        }
         labSettings.name = document.getElementById('labName').value;
         labSettings.address = document.getElementById('labAddress').value;
         labSettings.phone = document.getElementById('labPhone').value;
@@ -770,12 +963,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- ARCHIVING ---
     archiveNowBtn.addEventListener('click', () => {
+        if (!checkPermission('canManageSettings')) {
+            alert('ليس لديك الصلاحية للقيام بهذا الإجراء.');
+            return;
+        }
         if (confirm('هل أنت متأكد من رغبتك في أرشفة السجلات القديمة الآن؟')) {
             runArchivingProcess(true);
         }
     });
 
-    const runArchivingProcess = (showFeedback = false) => {
+    const runArchivingProcess = (showFeedback = false) => {        
         const archiveDays = labSettings.archiveAfterDays || 30;
         const cutoffDate = new Date();
         cutoffDate.setDate(cutoffDate.getDate() - archiveDays);
@@ -837,6 +1034,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- BACKUP & RESTORE ---
     backupBtn.addEventListener('click', () => {
+        if (!checkPermission('canManageSettings')) {
+            alert('ليس لديك الصلاحية للقيام بهذا الإجراء.');
+            return;
+        }
         if (!confirm('هل تريد إنشاء نسخة احتياطية من جميع بيانات النظام؟')) {
             return;
         }
@@ -866,6 +1067,11 @@ document.addEventListener('DOMContentLoaded', () => {
     restoreInput.addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (!file) return;
+
+        if (!checkPermission('canManageSettings')) {
+            alert('ليس لديك الصلاحية للقيام بهذا الإجراء.');
+            return;
+        }
 
         if (!confirm('تحذير! هل أنت متأكد من رغبتك في استعادة البيانات من هذا الملف؟ سيتم حذف جميع البيانات الحالية واستبدالها بالبيانات الموجودة في الملف.')) {
             e.target.value = '';
@@ -930,7 +1136,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     printSelectedTestsBtn.addEventListener('click', () => {
-        const selectedResultIds = Array.from(document.querySelectorAll('.test-print-checkbox:checked')).map(cb => cb.value);
+        const selectedResultIds = Array.from(document.querySelectorAll('.test-print-checkbox:checked')).map(cb => parseInt(cb.value));
         
         if (selectedResultIds.length === 0) {
             alert('الرجاء تحديد تحليل واحد على الأقل للطباعة.');
@@ -943,11 +1149,19 @@ document.addEventListener('DOMContentLoaded', () => {
     printTodayReportBtn.addEventListener('click', () => handlePrintTodayReport());
 
     const handleDelete = (id, type) => {
-        if (currentUserRole !== 'admin') {
+        const permissionMap = {
+            'patient': 'canEditAddDeletePatients',
+            'test': 'canManageTests',
+            'result': 'canWriteResults',
+            'inventory': 'canManageInventory',
+            'test-definition': 'canManageTestDefs',
+            'user': 'canManageUsers'
+        };
+        if (!checkPermission(permissionMap[type])) {
             alert('ليس لديك الصلاحية للقيام بهذا الإجراء.');
             return;
         }
-        if (!confirm('هل أنت متأكد من رغبتك في الحذف؟ لا يمكن التراجع عن هذا الإجراء.')) return;
+        if (!confirm(`هل أنت متأكد من رغبتك في حذف هذا الـ ${type}؟ لا يمكن التراجع عن هذا الإجراء.`)) return;
 
         switch (type) {
             case 'patient':
@@ -957,11 +1171,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 patients = patients.filter(p => p.id !== id);
                 break;
             case 'test':
-                results = results.filter(r => r.testId !== id);
-                tests = tests.filter(t => t.id !== id);
+                results = results.filter(r => r.testId !== parseInt(id));
+                tests = tests.filter(t => t.id !== parseInt(id));
                 break;
             case 'result':
-                results = results.filter(r => r.id !== id);
+                results = results.filter(r => r.id !== parseInt(id));
                 break;
             case 'inventory':
                 inventory = inventory.filter(i => i.id !== id);
@@ -973,6 +1187,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
                 testDefinitions = testDefinitions.filter(d => d.id !== id);
+                break;
+            case 'user':
+                const userToDelete = users.find(u => u.id === id);
+                if (userToDelete && userToDelete.isDefaultAdmin) {
+                    alert('لا يمكن حذف حساب المدير الافتراضي.');
+                    return;
+                }
+                users = users.filter(u => u.id !== id);
                 break;
         }
         saveData();
@@ -992,6 +1214,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const renderPatientProfile = (patient) => {
+        const canPrint = checkPermission('canPrintReports');
         const infoDiv = document.getElementById('patient-profile-info');
         infoDiv.innerHTML = `
             <p><strong>المعرف:</strong> ${patient.id}</p>
@@ -1009,10 +1232,10 @@ document.addEventListener('DOMContentLoaded', () => {
         testsTableBody.innerHTML = patientTests.map((test, index) => {
             const result = results.find(r => r.testId === test.id);
             const printButton = result 
-                ? `<button class="action-btn print" data-id="${result.id}">طباعة</button>` 
+                ? (canPrint ? `<button class="action-btn print" data-id="${result.id}">طباعة</button>` : '')
                 : `<button class="action-btn" disabled>معلق</button>`;
             const checkbox = result
-                ? `<input type="checkbox" class="test-print-checkbox" value="${result.id}">`
+                ? (canPrint ? `<input type="checkbox" class="test-print-checkbox" value="${result.id}">` : '')
                 : `<input type="checkbox" disabled>`;
 
             return `<tr>
@@ -1027,7 +1250,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const handleRestoreFromArchive = (archiveId) => {
-        if (currentUserRole !== 'admin') {
+        if (!checkPermission('canViewArchive')) {
             alert('ليس لديك الصلاحية للقيام بهذا الإجراء.');
             return;
         }
@@ -1168,7 +1391,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const allTests = [...tests, ...archive.flatMap(a => a.tests)];
         const allPatients = [...patients, ...archive.map(a => a.patient)];
 
-        const initialResult = allResults.find(r => r.id === resultId);
+        const initialResult = allResults.find(r => r.id === parseInt(resultId));
         if (!initialResult) { alert('لم يتم العثور على النتيجة!'); return; }
         const initialTest = allTests.find(t => t.id === initialResult.testId);
         if (!initialTest) { alert('لم يتم العثور على الفحص المرتبط!'); return; }
@@ -1363,12 +1586,23 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const handleEdit = (id, type) => {
-        if (currentUserRole !== 'admin') {
+        const permissionMap = {
+            'patient': 'canEditAddDeletePatients',
+            'test': 'canManageTests',
+            'result': 'canWriteResults',
+            'inventory': 'canManageInventory',
+            'test-definition': 'canManageTestDefs',
+            'user': 'canManageUsers'
+        };
+        if (!checkPermission(permissionMap[type])) {
             alert('ليس لديك الصلاحية للقيام بهذا الإجراء.');
             return;
         }
-        const data = { patient: patients, test: tests, result: results, inventory: inventory, 'test-definition': testDefinitions };
-        const item = data[type].find(i => i.id === id);
+
+        const data = { patient: patients, test: tests, result: results, inventory: inventory, 'test-definition': testDefinitions, user: users };
+        const numericIdTypes = ['test', 'result'];
+        const searchId = numericIdTypes.includes(type) ? parseInt(id) : id;
+        const item = data[type].find(i => i.id === searchId);
         let formHtml = '';
         modalTitle.textContent = `تعديل ${type}`;
 
@@ -1453,6 +1687,25 @@ document.addEventListener('DOMContentLoaded', () => {
                         <button type="button" id="openEditMaterialsModalBtn" class="add-btn">اختيار المواد</button>
                     </div>`;
                 break;
+            case 'user':
+                if (item.isDefaultAdmin) {
+                    alert('لا يمكن تعديل حساب المدير الافتراضي.');
+                    return;
+                }
+                const permissionsHtml = Object.keys(PERMISSIONS).map(key => {
+                    if (key === 'canManageUsers') return '';
+                    const isChecked = item.permissions[key];
+                    return `<label><input type="checkbox" name="permission" value="${key}" ${isChecked ? 'checked' : ''}> ${PERMISSIONS[key]}</label>`;
+                }).join('');
+                formHtml = `
+                    <input type="text" id="editUsername" value="${item.username}" placeholder="اسم المستخدم" required>
+                    <input type="password" id="editUserPassword" placeholder="كلمة مرور جديدة (اتركها فارغة لعدم التغيير)">
+                    <textarea id="editUserAdminNotes" placeholder="ملاحظات المدير (خاصة)">${item.adminNotes || ''}</textarea>
+                    <div class="sub-form-container">
+                        <h4>الصلاحيات</h4>
+                        <div id="editUserPermissionsContainer" class="checkbox-container">${permissionsHtml}</div>
+                    </div>`;
+                break;
         }
         
         editForm.innerHTML = formHtml + `<button type="submit">حفظ التعديلات</button>`;
@@ -1464,9 +1717,11 @@ document.addEventListener('DOMContentLoaded', () => {
     editForm.addEventListener('submit', e => {
         e.preventDefault();
         const { id, type } = e.target.dataset;
-        const data = { patient: patients, test: tests, result: results, inventory: inventory, 'test-definition': testDefinitions };
-        const item = data[type].find(i => i.id === id);
-
+        const data = { patient: patients, test: tests, result: results, inventory: inventory, 'test-definition': testDefinitions, user: users };
+        const numericIdTypes = ['test', 'result'];
+        const searchId = numericIdTypes.includes(type) ? parseInt(id) : id;
+        const item = data[type].find(i => i.id === searchId);
+        
         switch (type) {
             case 'patient':
                 const newNationalId = document.getElementById('editPatientNationalId').value;
@@ -1549,6 +1804,29 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                 }
                 break;
+            case 'user':
+                const newUsername = document.getElementById('editUsername').value.trim();
+                const newPassword = document.getElementById('editUserPassword').value;
+                const newAdminNotes = document.getElementById('editUserAdminNotes').value;
+
+                if (newUsername.toLowerCase() !== item.username.toLowerCase() && users.some(u => u.username.toLowerCase() === newUsername.toLowerCase())) {
+                    alert('اسم المستخدم هذا موجود بالفعل.');
+                    return;
+                }
+                item.username = newUsername;
+
+                if (newPassword) {
+                    if (newPassword.length < 4) {
+                        alert('يجب أن تكون كلمة المرور 4 أحرف على الأقل.');
+                        return;
+                    }
+                    item.password = newPassword;
+                }
+
+                item.permissions = {};
+                document.querySelectorAll('#editUserPermissionsContainer input:checked').forEach(cb => item.permissions[cb.value] = true);
+                item.adminNotes = newAdminNotes;
+                break;
         }
         
         saveData();
@@ -1557,7 +1835,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     editForm.addEventListener('click', e => {
-        if (editForm.dataset.type !== 'test-definition') return;
+        if (editForm.dataset.type !== 'test-definition' && editForm.dataset.type !== 'user') return;
     
         if (e.target.id === 'addEditTestDefParamBtn') {
             const container = document.getElementById('editTestDefParametersContainer');
@@ -1587,8 +1865,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const activeSectionId = document.querySelector('.content-section.active')?.id;
         
         if (!activeSectionId) return;
-
-        const data = { patients, tests, results, inventory, 'test-definitions': testDefinitions, consumed: consumedLog, archive: archive };
+        const data = { patients, tests, results, inventory, 'test-definitions': testDefinitions, consumed: consumedLog, archive: archive, users: users };
 
         const filterFunctions = {
             patients: d => d.filter(p => p.name.toLowerCase().includes(term) || (p.phone || '').includes(term) || (p.nationalId && p.nationalId.toLowerCase().includes(term))),
@@ -1601,10 +1878,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 const patient = test ? patients.find(p => p.id === test.patientId) : null;
                 return (test && test.type.toLowerCase().includes(term)) || (patient && patient.name.toLowerCase().includes(term));
             }),
-            consumed: d => d.filter(log => log.materialName.toLowerCase().includes(term) || log.testType.toLowerCase().includes(term) || log.testId.toLowerCase().includes(term)),
+            consumed: d => d.filter(log => log.materialName.toLowerCase().includes(term) || log.testType.toLowerCase().includes(term) || String(log.testId).includes(term)),
             inventory: d => d.filter(i => i.name.toLowerCase().includes(term)),
             'test-definitions': d => d.filter(def => def.name.toLowerCase().includes(term) || (def.parameters || []).some(p => p.name.toLowerCase().includes(term))),
-            archive: d => d.filter(item => item.patient.name.toLowerCase().includes(term))
+            archive: d => d.filter(item => item.patient.name.toLowerCase().includes(term)),
+            users: d => d.filter(u => u.username.toLowerCase().includes(term))
         };
 
         const renderFunctions = {
@@ -1614,7 +1892,8 @@ document.addEventListener('DOMContentLoaded', () => {
             inventory: renderInventory,
             'test-definitions': renderTestDefinitions,
             consumed: renderConsumedLog,
-            archive: renderArchive
+            archive: renderArchive,
+            users: renderUsers
         };
 
         if(filterFunctions[activeSectionId]) {
@@ -1792,6 +2071,7 @@ document.addEventListener('DOMContentLoaded', () => {
         renderTestDefinitions();
         renderConsumedLog();
         renderArchive();
+        renderUsers();
         renderTodayCases();
         updateDashboard();
     };
@@ -1818,9 +2098,9 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const checkLogin = () => {
-        const storedRole = sessionStorage.getItem('userRole');
-        if (storedRole) {
-            completeLogin(storedRole);
+        const storedUser = sessionStorage.getItem('currentUser');
+        if (storedUser) {
+            completeLogin(JSON.parse(storedUser));
         } else {
             loginModal.style.display = 'flex';
             mainContainer.style.visibility = 'hidden';
