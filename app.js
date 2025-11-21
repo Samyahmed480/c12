@@ -193,8 +193,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (users.length === 0) {
         users.push({
             id: 'admin',
-            username: 'admin',
-            password: 'admin123',
+            username: 'eissa',
+            password: '218@@!',
             isDefaultAdmin: true, // To prevent deletion
             permissions: {} // Admin has all permissions implicitly
         });
@@ -2703,3 +2703,4 @@ document.addEventListener('DOMContentLoaded', () => {
 
     checkLogin();
 });
+
