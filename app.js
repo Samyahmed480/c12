@@ -1,4 +1,176 @@
 document.addEventListener('DOMContentLoaded', () => {
+    // --- DYNAMICALLY ADD ELEMENTS ---
+    // Create and append the Patient Selection Modal
+    const patientModalHtml = `
+    <div id="patientSelectionModal" class="modal">
+        <div class="modal-content">
+            <span id="closePatientSelectionModalBtn" class="close-btn">&times;</span>
+            <h2>اختر مريضاً</h2>
+            <input type="text" id="patientSelectionSearch" placeholder="ابحث بالاسم أو الرقم الوطني أو المعرف...">
+            <div id="patientSelectionList" class="modal-list"></div>
+        </div>
+    </div>`;
+    document.body.insertAdjacentHTML('beforeend', patientModalHtml);
+
+    // Create and append the Test Selection Modal
+    const testModalHtml = `
+    <div id="testSelectionModal" class="modal">
+        <div class="modal-content">
+            <span id="closeTestSelectionModalBtn" class="close-btn">&times;</span>
+            <h2>اختر فحصاً</h2>
+            <input type="text" id="testSelectionSearch" placeholder="ابحث بالرقم المتسلسل, كود المريض, اسم المريض, أو نوع الفحص...">
+            <div id="testSelectionList" class="modal-list"></div>
+        </div>
+    </div>`;
+    document.body.insertAdjacentHTML('beforeend', testModalHtml);
+
+    // Create and append custom styles for new elements
+    const customSelectStyles = `
+        .custom-select-container {
+            position: relative;
+            grid-column: span 2; /* Make it span full width in the form grid */
+        }
+        .custom-select-display {
+            background-color: var(--input-bg);
+            color: var(--text-secondary-color);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 10px;
+            cursor: pointer;
+            user-select: none;
+            text-align: right;
+            transition: border-color 0.2s;
+        }
+        .custom-select-display:hover {
+            border-color: var(--primary-color);
+        }
+        .custom-select-display.selected {
+            color: var(--text-color);
+            font-weight: 500;
+        }
+        
+        /* --- Enhanced Modal Styles --- */
+        #patientSelectionModal .modal-content, #testSelectionModal .modal-content {
+            width: 90%;
+            max-width: 800px; /* Wider modal for better table view */
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        #patientSelectionSearch, #testSelectionSearch {
+            margin-bottom: 15px;
+            padding: 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background-color: var(--input-bg);
+            color: var(--text-color);
+            width: 100%;
+            box-sizing: border-box;
+            font-size: 1rem;
+            transition: all 0.2s ease-in-out;
+        }
+        #patientSelectionSearch:focus, #testSelectionSearch:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.2);
+        }
+
+        #patientSelectionList, #testSelectionList {
+            max-height: 60vh;
+            overflow-y: auto;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background-color: var(--bg-color);
+        }
+
+        .patient-select-header, .patient-select-item {
+            display: grid;
+            grid-template-columns: 50px 1.5fr 2fr;
+            padding: 12px 15px;
+            gap: 10px;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .patient-select-header {
+            font-weight: 700;
+            color: var(--text-secondary-color);
+            background-color: var(--bg-secondary);
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            border-bottom-width: 2px;
+        }
+
+        .patient-select-item {
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .patient-select-item:hover {
+            background-color: var(--hover-bg);
+        }
+
+        .patient-select-item:last-child {
+            border-bottom: none;
+        }
+
+        .patient-select-item span:nth-child(2) { /* Patient Code (National ID) */
+            color: var(--text-secondary-color);
+            font-size: 0.9em;
+        }
+        .patient-select-item span:nth-child(3) { /* Patient Name */
+            font-weight: 600;
+            color: var(--text-color);
+        }
+
+        .no-results {
+            padding: 20px;
+            text-align: center;
+            color: var(--text-secondary-color);
+        }
+
+        .test-select-header, .test-select-item {
+            display: grid;
+            grid-template-columns: 100px 1fr 1.5fr 1.5fr 1fr;
+            padding: 12px 15px;
+            gap: 10px;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .test-select-header {
+            font-weight: 700;
+            color: var(--text-secondary-color);
+            background-color: var(--bg-secondary);
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            border-bottom-width: 2px;
+        }
+        .test-select-item {
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .test-select-item:hover {
+            background-color: var(--hover-bg);
+        }
+        .test-select-item:last-child {
+            border-bottom: none;
+        }
+        .test-select-item span:nth-child(3) { /* Patient Name */
+            font-weight: 600;
+            color: var(--text-color);
+        }
+
+    `;
+    const styleSheet = document.createElement("style");
+    styleSheet.innerText = customSelectStyles;
+    document.head.appendChild(styleSheet);
+
     // --- STATE MANAGEMENT ---
     let patients = JSON.parse(localStorage.getItem('patients')) || [];
     let tests = JSON.parse(localStorage.getItem('tests')) || [];
@@ -100,6 +272,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const materialsModalList = document.getElementById('materialsModalList');
     const confirmMaterialsSelectionBtn = document.getElementById('confirmMaterialsSelectionBtn');
     const openMaterialsModalBtn = document.getElementById('openMaterialsModalBtn');
+
+    // Patient Selection Modal Elements (dynamically added)
+    const patientSelectionModal = document.getElementById('patientSelectionModal');
+    const closePatientSelectionModalBtn = document.getElementById('closePatientSelectionModalBtn');
+    const patientSelectionSearch = document.getElementById('patientSelectionSearch');
+    const patientSelectionList = document.getElementById('patientSelectionList');
+
+    // Test Selection Modal Elements (dynamically added)
+    const testSelectionModal = document.getElementById('testSelectionModal');
+    const closeTestSelectionModalBtn = document.getElementById('closeTestSelectionModalBtn');
+    const testSelectionSearch = document.getElementById('testSelectionSearch');
+    const testSelectionList = document.getElementById('testSelectionList');
 
     // Patient Profile Elements
     const patientProfileSection = document.getElementById('patient-profile');
@@ -282,7 +466,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 </td>
             </tr>`;
         }).join('');
-        updateResultTestDropdown();
     };
     
     const renderResults = (data = results) => {
@@ -449,8 +632,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const updatePatientDropdown = () => {
         const select = document.getElementById('testPatientId');
-        select.innerHTML = '<option value="" disabled selected>اختر مريضاً</option>' +
-            patients.map(p => `<option value="${p.id}">${p.id} - ${p.name}</option>`).join('');
+        // This function is still used by the edit modal, so we keep it, but make it safe
+        // in case the element was replaced on the main form.
+        if (select) {
+            select.innerHTML = '<option value="" disabled selected>اختر مريضاً</option>' +
+                patients.map(p => `<option value="${p.id}">${p.id} - ${p.name}</option>`).join('');
+        }
     };
 
     const populateTestTypesCheckboxes = () => {
@@ -493,13 +680,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     });
-
-    const updateResultTestDropdown = () => {
-        const select = document.getElementById('resultTestId');
-        select.innerHTML = '<option value="" disabled selected>اختر فحصًا لإضافة نتيجة</option>' +
-            tests.filter(t => t.status === 'معلق').map(t => `<option value="${t.id}">${t.id} - ${t.type}</option>`).join('');
-        select.value = '';
-    };
 
     // --- NAVIGATION ---
     menuItems.forEach(item => {
@@ -544,6 +724,40 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    // --- DYNAMIC FORM MODIFICATION ---
+    // Modify the test form's patient selection to use a modal
+    const testPatientIdSelect = document.getElementById('testPatientId');
+    if (testPatientIdSelect) {
+        const customSelectContainer = document.createElement('div');
+        customSelectContainer.className = 'custom-select-container';
+        customSelectContainer.innerHTML = `
+            <input type="hidden" id="selectedPatientIdForTest">
+            <div id="patientSelectionDisplay" class="custom-select-display" tabindex="0">اختر مريضاً</div>
+        `;
+        
+        testPatientIdSelect.replaceWith(customSelectContainer);
+    
+        const patientSelectionDisplay = document.getElementById('patientSelectionDisplay');
+        patientSelectionDisplay.addEventListener('click', () => openPatientSelectionModal());
+    }
+
+    // Modify the result form's test selection to use a modal
+    const resultTestIdSelect = document.getElementById('resultTestId');
+    if (resultTestIdSelect) {
+        const customSelectContainer = document.createElement('div');
+        customSelectContainer.className = 'custom-select-container';
+        customSelectContainer.innerHTML = `
+            <input type="hidden" id="selectedTestIdForResult">
+            <div id="testSelectionDisplay" class="custom-select-display" tabindex="0">اختر فحصاً لإضافة نتيجة</div>
+        `;
+        
+        // The select is inside a div with class 'form-group'
+        resultTestIdSelect.parentElement.replaceWith(customSelectContainer);
+    
+        const testSelectionDisplay = document.getElementById('testSelectionDisplay');
+        testSelectionDisplay.addEventListener('click', () => openTestSelectionModal());
+    }
+
     // --- FORM SUBMISSIONS ---
     patientForm.addEventListener('submit', e => {
         e.preventDefault();
@@ -578,7 +792,7 @@ document.addEventListener('DOMContentLoaded', () => {
             alert('ليس لديك الصلاحية للقيام بهذا الإجراء.');
             return;
         }
-        const patientId = document.getElementById('testPatientId').value;
+        const patientId = document.getElementById('selectedPatientIdForTest').value;
         const selectedTests = document.querySelectorAll('#testTypesContainer input[name="testType"]:checked');
 
         if (!patientId) {
@@ -606,6 +820,13 @@ document.addEventListener('DOMContentLoaded', () => {
         saveData();
         renderAll();
         testForm.reset();
+        // Reset custom patient selector
+        document.getElementById('selectedPatientIdForTest').value = '';
+        const patientSelectionDisplay = document.getElementById('patientSelectionDisplay');
+        if(patientSelectionDisplay) {
+            patientSelectionDisplay.textContent = 'اختر مريضاً';
+            patientSelectionDisplay.classList.remove('selected');
+        }
         alert(`تمت إضافة ${newTests.length} فحص/فحوصات بنجاح.`);
     });
     
@@ -722,7 +943,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     resultForm.addEventListener('submit', e => {
         e.preventDefault();
-        const testId = parseInt(document.getElementById('resultTestId').value);
+        const testId = parseInt(document.getElementById('selectedTestIdForResult').value);
         const test = tests.find(t => t.id === testId);
         if (!test) return;
         const testDef = testDefinitions.find(def => def.name === test.type);
@@ -786,13 +1007,18 @@ document.addEventListener('DOMContentLoaded', () => {
         renderAll();
         resultForm.reset();
         resultParametersContainer.innerHTML = '';
+        const testSelectionDisplay = document.getElementById('testSelectionDisplay');
+        if (testSelectionDisplay) {
+            testSelectionDisplay.textContent = 'اختر فحصاً لإضافة نتيجة';
+            testSelectionDisplay.classList.remove('selected');
+            document.getElementById('selectedTestIdForResult').value = '';
+        }
         alert('تم تسجيل النتيجة بنجاح، وأصبح الفحص مكتملاً.');
     });
 
     // --- AUTO-POPULATE RESULT FORM ---
-    document.getElementById('resultTestId').addEventListener('change', e => {
-        const testId = parseInt(e.target.value);
-        const test = tests.find(t => t.id === testId);
+    const populateResultParameters = (testId) => {
+        const test = tests.find(t => t.id === parseInt(testId));
         resultParametersContainer.innerHTML = '';
         if (!test) return;
 
@@ -816,7 +1042,7 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
             resultParametersContainer.appendChild(row);
         });
-    });
+    };
 
     // Test Definition Parameters
     addTestDefParamBtn.addEventListener('click', () => {
@@ -916,6 +1142,151 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     
         closeMaterialsModal();
+    });
+
+    // --- PATIENT SELECTION MODAL LOGIC ---
+    const openPatientSelectionModal = () => {
+        patientSelectionSearch.value = '';
+        renderPatientListForModal();
+        patientSelectionModal.style.display = 'flex';
+        patientSelectionSearch.focus();
+    };
+
+    const closePatientSelectionModal = () => {
+        patientSelectionModal.style.display = 'none';
+    };
+
+    const renderPatientListForModal = (searchTerm = '') => {
+        const lowerCaseSearchTerm = searchTerm.toLowerCase();
+        const filteredPatients = patients.filter(p => 
+            p.name.toLowerCase().includes(lowerCaseSearchTerm) ||
+            (p.nationalId || '').toLowerCase().includes(lowerCaseSearchTerm) ||
+            p.id.toLowerCase().includes(lowerCaseSearchTerm)
+        );
+
+        const headerHtml = `
+            <div class="patient-select-header">
+                <span>#</span>
+                <span>كود المريض</span>
+                <span>اسم المريض</span>
+            </div>
+        `;
+
+        const listHtml = filteredPatients.map((p, index) => `
+            <div class="patient-select-item" data-id="${p.id}">
+                <span>${index + 1}</span>
+                <span>${p.nationalId || 'غير مسجل'}</span>
+                <span>${p.name}</span>
+            </div>
+        `).join('');
+
+        if (filteredPatients.length === 0) {
+            patientSelectionList.innerHTML = '<p class="no-results">لا يوجد مرضى مطابقون للبحث.</p>';
+        } else {
+            patientSelectionList.innerHTML = headerHtml + listHtml;
+        }
+    };
+
+    // Event listeners for the new modal
+    closePatientSelectionModalBtn.addEventListener('click', closePatientSelectionModal);
+    patientSelectionSearch.addEventListener('keyup', () => renderPatientListForModal(patientSelectionSearch.value));
+
+    patientSelectionList.addEventListener('click', (e) => {
+        const item = e.target.closest('.patient-select-item');
+        if (item) {
+            const patientId = item.dataset.id;
+            const patient = patients.find(p => p.id === patientId);
+            if (patient) {
+                document.getElementById('selectedPatientIdForTest').value = patient.id;
+                const patientSelectionDisplay = document.getElementById('patientSelectionDisplay');
+                if (patientSelectionDisplay) {
+                    patientSelectionDisplay.textContent = `${patient.name} (${patient.nationalId || patient.id})`;
+                    patientSelectionDisplay.classList.add('selected');
+                }
+            }
+            closePatientSelectionModal();
+        }
+    });
+
+    // --- TEST SELECTION MODAL LOGIC ---
+    const openTestSelectionModal = () => {
+        testSelectionSearch.value = '';
+        renderTestListForModal();
+        testSelectionModal.style.display = 'flex';
+        testSelectionSearch.focus();
+    };
+
+    const closeTestSelectionModal = () => {
+        testSelectionModal.style.display = 'none';
+    };
+
+    const renderTestListForModal = (searchTerm = '') => {
+        const lowerCaseSearchTerm = searchTerm.toLowerCase();
+        const pendingTests = tests.filter(t => t.status === 'معلق');
+
+        const filteredTests = pendingTests.filter(t => {
+            const patient = patients.find(p => p.id === t.patientId);
+            if (!patient) return false;
+            const testDate = new Date(t.date).toLocaleDateString('ar-EG');
+            return (
+                String(t.id).includes(lowerCaseSearchTerm) ||
+                (patient.nationalId || '').toLowerCase().includes(lowerCaseSearchTerm) ||
+                patient.name.toLowerCase().includes(lowerCaseSearchTerm) ||
+                t.type.toLowerCase().includes(lowerCaseSearchTerm) ||
+                testDate.includes(lowerCaseSearchTerm)
+            );
+        });
+
+        const headerHtml = `
+            <div class="test-select-header">
+                <span>الرقم المتسلسل</span>
+                <span>كود المريض</span>
+                <span>اسم المريض</span>
+                <span>نوع الفحص</span>
+                <span>تاريخ الطلب</span>
+            </div>
+        `;
+
+        const listHtml = filteredTests.map(t => {
+            const patient = patients.find(p => p.id === t.patientId);
+            return `
+            <div class="test-select-item" data-id="${t.id}">
+                <span>${t.id}</span>
+                <span>${patient.nationalId || 'غير مسجل'}</span>
+                <span>${patient.name}</span>
+                <span>${t.type}</span>
+                <span>${new Date(t.date).toLocaleDateString('ar-EG')}</span>
+            </div>
+        `}).join('');
+
+        if (filteredTests.length === 0) {
+            testSelectionList.innerHTML = '<p class="no-results">لا يوجد فحوصات معلقة مطابقة للبحث.</p>';
+        } else {
+            testSelectionList.innerHTML = headerHtml + listHtml;
+        }
+    };
+
+    // Event listeners for the new modal
+    closeTestSelectionModalBtn.addEventListener('click', closeTestSelectionModal);
+    testSelectionSearch.addEventListener('keyup', () => renderTestListForModal(testSelectionSearch.value));
+
+    testSelectionList.addEventListener('click', (e) => {
+        const item = e.target.closest('.test-select-item');
+        if (item) {
+            const testId = item.dataset.id;
+            const test = tests.find(t => t.id === parseInt(testId));
+            const patient = test ? patients.find(p => p.id === test.patientId) : null;
+            if (test && patient) {
+                document.getElementById('selectedTestIdForResult').value = test.id;
+                const testSelectionDisplay = document.getElementById('testSelectionDisplay');
+                if (testSelectionDisplay) {
+                    testSelectionDisplay.textContent = `الفحص #${test.id} - ${patient.name} - ${test.type}`;
+                    testSelectionDisplay.classList.add('selected');
+                }
+                populateResultParameters(test.id);
+            }
+            closeTestSelectionModal();
+        }
     });
 
     // --- SETTINGS PAGE ---
@@ -1217,13 +1588,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const canPrint = checkPermission('canPrintReports');
         const infoDiv = document.getElementById('patient-profile-info');
         infoDiv.innerHTML = `
-            <p><strong>المعرف:</strong> ${patient.id}</p>
-            <p><strong>الرقم الوطني:</strong> ${patient.nationalId || 'غير مسجل'}</p>
+            <p><strong>كود المريض:</strong> ${patient.nationalId || 'غير مسجل'}</p>
+            <p><strong>رقم السجل:</strong> ${patient.record || 'غير مسجل'}</p>
             <p><strong>الاسم:</strong> ${patient.name}</p>
             <p><strong>العمر:</strong> ${patient.age}</p>
             <p><strong>الجنس:</strong> ${patient.gender}</p>
             <p><strong>الهاتف:</strong> ${patient.phone || 'لا يوجد'}</p>
-            <p><strong>السجل الطبي:</strong> ${patient.record || 'لا يوجد'}</p>
         `;
 
         const testsTableBody = document.querySelector('#patientProfileTestsTable tbody');
@@ -1286,13 +1656,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const infoDiv = document.getElementById('patient-profile-info');
         infoDiv.innerHTML = `
-            <p><strong>المعرف:</strong> ${archivedItem.patient.id}</p>
-            <p><strong>الرقم الوطني:</strong> ${archivedItem.patient.nationalId || 'غير مسجل'}</p>
+            <p><strong>كود المريض:</strong> ${archivedItem.patient.nationalId || 'غير مسجل'}</p>
+            <p><strong>رقم السجل:</strong> ${archivedItem.patient.record || 'غير مسجل'}</p>
             <p><strong>الاسم:</strong> ${archivedItem.patient.name}</p>
             <p><strong>العمر:</strong> ${archivedItem.patient.age}</p>
             <p><strong>الجنس:</strong> ${archivedItem.patient.gender}</p>
             <p><strong>الهاتف:</strong> ${archivedItem.patient.phone || 'لا يوجد'}</p>
-            <p><strong>السجل الطبي:</strong> ${archivedItem.patient.record || 'لا يوجد'}</p>
         `;
 
         const testsTableBody = document.querySelector('#patientProfileTestsTable tbody');
@@ -1321,6 +1690,191 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     };
 
+    const getModernReportStyles = () => `
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap');
+            
+            /* --- Page counter and layout for printing --- */
+            @page {
+                size: A4;
+                margin: 1.5cm; /* Added more margin for a cleaner look */
+                @bottom-center {
+                    content: "صفحة " counter(page);
+                    font-family: 'Cairo', sans-serif;
+                    font-size: 10pt;
+                    color: #888;
+                }
+            }
+
+            :root {
+                --primary-color: #198754; /* A professional green */
+                --secondary-color: #146c43;
+                --page-background: #f0f2f5;
+                --report-background: #fff;
+                --box-background: #f8f9fa;
+                --border-color: #dee2e6; /* Lighter border */
+                --text-color: #212529;
+                --text-secondary-color: #6c757d;
+                --notes-background: #fff3cd;
+                --notes-border: #ffeeba;
+            }
+            body {
+                font-family: 'Cairo', sans-serif;
+                direction: rtl;
+                /* background-color is removed to prevent affecting main page after print */
+                color: var(--text-color);
+            }
+            .report-container {
+                max-width: 850px;
+                margin: 25px auto;
+                padding: 40px;
+                background-color: var(--report-background);
+                border: 1px solid #ddd;
+                border-radius: 8px;
+                box-shadow: 0 6px 20px rgba(0,0,0,0.07);
+            }
+            .report-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                border-bottom: 4px solid var(--primary-color);
+                padding-bottom: 20px;
+                margin-bottom: 30px;
+            }
+            .report-header-logo img {
+                max-height: 85px;
+                max-width: 180px;
+            }
+            .report-header-info {
+                text-align: left;
+            }
+            .report-header-info h2 {
+                margin: 0;
+                color: var(--secondary-color);
+                font-size: 28px;
+                font-weight: 700;
+            }
+            .report-header-info p {
+                margin: 5px 0;
+                font-size: 14px;
+                color: var(--text-secondary-color);
+            }
+            .report-title {
+                text-align: center;
+                color: var(--text-color);
+                font-size: 26px;
+                margin-bottom: 30px;
+                font-weight: 700;
+                letter-spacing: 0.5px;
+            }
+            .report-patient-info {
+                border: 1px solid var(--border-color);
+                border-radius: 8px;
+                padding: 20px;
+                margin-bottom: 30px;
+                display: grid;
+                grid-template-columns: 1fr 1fr; /* Fixed 2-column layout */
+                gap: 15px 25px; /* row-gap column-gap */
+                font-size: 16px;
+                background-color: var(--box-background);
+            }
+            .report-patient-info div {
+                display: flex;
+                align-items: center;
+            }
+            .report-patient-info strong {
+                min-width: 110px;
+                color: var(--text-secondary-color);
+                font-weight: 600;
+            }
+            .report-patient-info span {
+                font-weight: 600;
+            }
+
+            .report-results-section h3 {
+                background-color: var(--primary-color);
+                color: white;
+                padding: 12px 20px;
+                border-radius: 6px;
+                margin-top: 30px;
+                margin-bottom: 15px;
+                font-size: 20px;
+                font-weight: 700;
+            }
+            .report-results-table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-bottom: 20px;
+                font-size: 15px;
+                border: 1px solid var(--border-color);
+            }
+            .report-results-table th, .report-results-table td {
+                border: 1px solid var(--border-color);
+                padding: 14px;
+                text-align: right;
+                vertical-align: middle;
+            }
+            .report-results-table thead th {
+                background-color: var(--box-background);
+                font-weight: 700;
+                color: var(--text-color);
+                font-size: 16px;
+                border-bottom: 3px solid var(--primary-color);
+            }
+            .report-results-table tbody tr:nth-child(even) {
+                background-color: #fdfdfd; /* Very subtle alternating color */
+            }
+            .report-notes-section {
+                background-color: #fefae0; /* A softer yellow */
+                border: 1px solid #faedcd;
+                border-radius: 5px;
+                padding: 15px 20px;
+                margin-top: 15px;
+                font-size: 15px;
+            }
+            .report-notes-section p { margin: 5px 0; }
+            .report-footer {
+                text-align: center;
+                margin-top: 50px;
+                border-top: 1px solid var(--border-color);
+                padding-top: 20px;
+            }
+            .footer-text {
+                font-size: 13px;
+                color: var(--text-secondary-color);
+            }
+            .report-signatures {
+                display: flex;
+                justify-content: space-around;
+                margin-top: 80px;
+            }
+            .signature-box {
+                text-align: center;
+                width: 250px;
+            }
+            .signature-box .line {
+                border-top: 1px solid var(--text-color);
+                margin: 0 15px 10px 15px;
+            }
+            .signature-box p {
+                margin: 0;
+                font-weight: 600;
+            }
+            @media print {
+                body {
+                    background-color: #fff;
+                }
+                .report-container {
+                    box-shadow: none;
+                    border: none;
+                    padding: 0;
+                    margin: 0;
+                    max-width: 100%;
+                }
+            }
+        </style>
+    `;
+
     const handlePrintTodayReport = () => {
         const todayTests = tests.filter(t => isToday(t.date));
         const pendingToday = todayTests.filter(t => t.status === 'معلق');
@@ -1329,19 +1883,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const todayDate = new Date().toLocaleDateString('ar-EG');
     
         const summaryHtml = `
-            <table class="report-patient-info">
-                <tr>
-                    <th>إجمالي فحوصات اليوم</th><td>${todayTests.length}</td>
-                    <th>الفحوصات المكتملة</th><td>${completedToday.length}</td>
-                    <th>الفحوصات المعلقة</th><td>${pendingToday.length}</td>
-                </tr>
-            </table>
+            <div class="report-summary-info">
+                <div><strong>إجمالي فحوصات اليوم:</strong> <span>${todayTests.length}</span></div>
+                <div><strong>الفحوصات المكتملة:</strong> <span>${completedToday.length}</span></div>
+                <div><strong>الفحوصات المعلقة:</strong> <span>${pendingToday.length}</span></div>
+            </div>
         `;
     
         const createTestListHtml = (title, testList) => {
-            if (testList.length === 0) {
-                return `<h3>${title} (0)</h3><p>لا يوجد.</p>`;
-            }
+            if (testList.length === 0) return `<h3>${title} (0)</h3><p style="padding: 15px; text-align: center;">لا يوجد.</p>`;
             return `
                 <h3>${title} (${testList.length})</h3>
                 <table class="report-results-table">
@@ -1361,26 +1911,32 @@ document.addEventListener('DOMContentLoaded', () => {
     
         const reportContent = document.getElementById('report-content');
         reportContent.innerHTML = `
-            <div class="report-header">
-                <div class="report-header-logo">
-                    <img src="${labSettings.logo}" alt="شعار المختبر">
+            ${getModernReportStyles()}
+            <div class="report-container">
+                <div class="report-header">
+                    <div class="report-header-logo">
+                        <img src="${labSettings.logo}" alt="شعار المختبر">
+                    </div>
+                    <div class="report-header-info">
+                        <h2>${labSettings.name}</h2>
+                        <p>${labSettings.address}</p>
+                        <p>هاتف: ${labSettings.phone} | بريد إلكتروني: ${labSettings.email}</p>
+                    </div>
                 </div>
-                <div class="report-header-info">
-                    <h2>${labSettings.name}</h2>
-                    <p>${labSettings.address}</p>
-                    <p>هاتف: ${labSettings.phone} | بريد إلكتروني: ${labSettings.email}</p>
+                <h2 class="report-title">تقرير حالات اليوم (${todayDate})</h2>
+                ${summaryHtml}
+                <div class="report-results-section">
+                    ${pendingHtml}
                 </div>
-            </div>
-            <h2 class="report-title">تقرير حالات اليوم (${todayDate})</h2>
-            ${summaryHtml}
-            <div class="report-results-section" style="margin-top: 20px;">
-                ${pendingHtml}
-            </div>
-            <div class="report-results-section" style="margin-top: 20px;">
-                ${completedHtml}
-            </div>
-            <div class="report-footer">
-                <p>تاريخ إصدار التقرير: ${new Date().toLocaleString('ar-EG')}</p>
+                <div class="report-results-section">
+                    ${completedHtml}
+                </div>
+                <div class="report-footer">
+                    <div class="footer-text">
+                        <p>تاريخ إصدار التقرير: ${new Date().toLocaleString('ar-EG')}</p>
+                        <p>هذا التقرير للاستخدام الداخلي فقط</p>
+                    </div>
+                </div>
             </div>
         `;
         window.print();
@@ -1399,6 +1955,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!patient) { alert('لم يتم العثور على المريض المرتبط!'); return; }
     
         const visitDate = new Date(initialTest.date).toLocaleDateString('ar-EG');
+        const resultDate = new Date(initialResult.date).toLocaleDateString('ar-EG');
     
         const testsForVisit = allTests.filter(t => 
             t.patientId === patient.id && 
@@ -1455,39 +2012,50 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
         }).join('');
     
+        const patientInfoHtml = `
+            <div class="report-patient-info">
+                <div><strong>اسم المريض:</strong> <span>${patient.name}</span></div>
+                <div><strong>العمر:</strong> <span>${patient.age}</span></div>
+                <div><strong>الجنس:</strong> <span>${patient.gender}</span></div>
+                <div><strong>كود المريض:</strong> <span>${patient.nationalId || 'غير مسجل'}</span></div>
+                <div><strong>رقم السجل:</strong> <span>${patient.record || 'غير مسجل'}</span></div>
+                <div><strong>تاريخ الطلب:</strong> <span>${visitDate}</span></div>
+                <div><strong>تاريخ النتيجة:</strong> <span>${resultDate}</span></div>
+            </div>
+        `;
+
         const reportContent = document.getElementById('report-content');
         reportContent.innerHTML = `
-            <div class="report-header">
-                <div class="report-header-logo">
-                    <img src="${labSettings.logo}" alt="شعار المختبر">
+            ${getModernReportStyles()}
+            <div class="report-container">
+                <div class="report-header">
+                    <div class="report-header-logo">
+                        <img src="${labSettings.logo}" alt="شعار المختبر">
+                    </div>
+                    <div class="report-header-info">
+                        <h2>${labSettings.name}</h2>
+                        <p>${labSettings.address}</p>
+                        <p>هاتف: ${labSettings.phone} | بريد إلكتروني: ${labSettings.email}</p>
+                    </div>
                 </div>
-                <div class="report-header-info">
-                    <h2>${labSettings.name}</h2>
-                    <p>${labSettings.address}</p>
-                    <p>هاتف: ${labSettings.phone} | بريد إلكتروني: ${labSettings.email}</p>
+                <h2 class="report-title">تقرير نتيجة المختبر</h2>
+                ${patientInfoHtml}
+                ${resultsHtml}
+                <div class="report-footer">
+                    <div class="footer-text">
+                        <p>تم إصدار هذا التقرير من ${labSettings.name}</p>
+                        <p>مع تمنياتنا لكم بالشفاء العاجل</p>
+                    </div>
                 </div>
-            </div>
-            <h2 class="report-title">تقرير نتيجة المختبر</h2>
-            <div class="report-patient-info">
-                <table>
-                    <tr><th>اسم المريض:</th><td>${patient.name}</td><th>العمر:</th><td>${patient.age}</td></tr>
-                    <tr><th>الجنس:</th><td>${patient.gender}</td><th>تاريخ الزيارة:</th><td>${visitDate}</td></tr>
-                    <tr><th>معرف المريض:</th><td>${patient.id}</td><th></th><td></td></tr>
-                </table>
-            </div>
-            ${resultsHtml}
-            <div class="report-footer">
-                <p>تاريخ إصدار التقرير: ${new Date().toLocaleString('ar-EG')}</p>
-                <p>مع تمنياتنا لكم بالشفاء العاجل</p>
-            </div>
-            <div class="report-signatures">
-                <div class="signature-box">
-                    <div class="line"></div>
-                    <p>توقيع فني المختبر</p>
-                </div>
-                <div class="signature-box">
-                    <div class="line"></div>
-                    <p>توقيع الطبيب المشرف</p>
+                <div class="report-signatures">
+                    <div class="signature-box">
+                        <div class="line"></div>
+                        <p>توقيع فني المختبر</p>
+                    </div>
+                    <div class="signature-box">
+                        <div class="line"></div>
+                        <p>اعتماد رئيس القسم</p>
+                    </div>
                 </div>
             </div>
         `;
@@ -1518,9 +2086,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     
         const resultsHtml = resultsToPrint.map(({ test, result }) => {
+            const requestDate = new Date(test.date).toLocaleDateString('ar-EG');
+            const resultDate = new Date(result.date).toLocaleDateString('ar-EG');
             const notesHtml = result.notes ? `
                 <div class="report-notes-section">
-                    <p><strong>ملاحظات الطبيب (بتاريخ ${new Date(test.date).toLocaleDateString('ar-EG')}):</strong></p>
+                    <p><strong>ملاحظات الطبيب:</strong></p>
                     <p>${result.notes.replace(/\n/g, '<br>')}</p>
                 </div>
             ` : '';
@@ -1550,36 +2120,56 @@ document.addEventListener('DOMContentLoaded', () => {
     
             return `
             <div class="report-results-section">
-                <h3>${test.type} (بتاريخ ${new Date(test.date).toLocaleDateString('ar-EG')})</h3>
+                <h3>${test.type} (تاريخ الطلب: ${requestDate} - تاريخ النتيجة: ${resultDate})</h3>
                 ${parametersTable}
                 ${notesHtml}
             </div>
             `;
         }).join('');
     
+        const patientInfoHtml = `
+            <div class="report-patient-info">
+                <div><strong>اسم المريض:</strong> <span>${patient.name}</span></div>
+                <div><strong>العمر:</strong> <span>${patient.age}</span></div>
+                <div><strong>الجنس:</strong> <span>${patient.gender}</span></div>
+                <div><strong>كود المريض:</strong> <span>${patient.nationalId || 'غير مسجل'}</span></div>
+                <div><strong>رقم السجل:</strong> <span>${patient.record || 'غير مسجل'}</span></div>
+            </div>
+        `;
+
         const reportContent = document.getElementById('report-content');
         reportContent.innerHTML = `
-            <div class="report-header">
-                <div class="report-header-logo">
-                    <img src="${labSettings.logo}" alt="شعار المختبر">
+            ${getModernReportStyles()}
+            <div class="report-container">
+                <div class="report-header">
+                    <div class="report-header-logo">
+                        <img src="${labSettings.logo}" alt="شعار المختبر">
+                    </div>
+                    <div class="report-header-info">
+                        <h2>${labSettings.name}</h2>
+                        <p>${labSettings.address}</p>
+                        <p>هاتف: ${labSettings.phone} | بريد إلكتروني: ${labSettings.email}</p>
+                    </div>
                 </div>
-                <div class="report-header-info">
-                    <h2>${labSettings.name}</h2>
-                    <p>${labSettings.address}</p>
-                    <p>هاتف: ${labSettings.phone} | بريد إلكتروني: ${labSettings.email}</p>
+                <h2 class="report-title">تقرير نتائج مجمعة</h2>
+                ${patientInfoHtml}
+                ${resultsHtml}
+                <div class="report-footer">
+                    <div class="footer-text">
+                        <p>تم إصدار هذا التقرير من ${labSettings.name}</p>
+                        <p>مع تمنياتنا لكم بالشفاء العاجل</p>
+                    </div>
                 </div>
-            </div>
-            <h2 class="report-title">تقرير نتائج مجمعة</h2>
-            <div class="report-patient-info">
-                <table>
-                    <tr><th>اسم المريض:</th><td>${patient.name}</td><th>العمر:</th><td>${patient.age}</td></tr>
-                    <tr><th>الجنس:</th><td>${patient.gender}</td><th>معرف المريض:</th><td>${patient.id}</td></tr>
-                </table>
-            </div>
-            ${resultsHtml}
-            <div class="report-footer">
-                <p>تاريخ إصدار التقرير: ${new Date().toLocaleString('ar-EG')}</p>
-                <p>مع تمنياتنا لكم بالشفاء العاجل</p>
+                <div class="report-signatures">
+                    <div class="signature-box">
+                        <div class="line"></div>
+                        <p>توقيع فني المختبر</p>
+                    </div>
+                    <div class="signature-box">
+                        <div class="line"></div>
+                        <p>اعتماد رئيس القسم</p>
+                    </div>
+                </div>
             </div>
         `;
         window.print();
@@ -1857,7 +2447,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const closeModal = () => { editModal.style.display = 'none'; };
     closeBtn.onclick = closeModal;
-    window.onclick = e => { if (e.target == editModal) closeModal(); };
+    window.onclick = e => {
+        if (e.target == editModal) closeModal();
+        if (e.target == patientSelectionModal) closePatientSelectionModal();
+        if (e.target == testSelectionModal) closeTestSelectionModal();
+    };
 
     // --- SEARCH ---
     searchInput.addEventListener('keyup', () => {
@@ -2002,7 +2596,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     exportPatientsBtn.addEventListener('click', () => {
-        const headers = ["المعرف", "الرقم الوطني", "الاسم", "العمر", "الجنس", "الهاتف", "السجل الطبي"];
+        const headers = ["المعرف", "الرقم  المريض", "الاسم", "العمر", "الجنس", "الهاتف", "السجل الطبي"];
         const dataRows = patients.map(p => [
             sanitizeCsvField(p.id), sanitizeCsvField(p.nationalId), sanitizeCsvField(p.name), sanitizeCsvField(p.age),
             sanitizeCsvField(p.gender), sanitizeCsvField(p.phone), sanitizeCsvField(p.record)
