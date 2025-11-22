@@ -166,6 +166,16 @@ document.addEventListener('DOMContentLoaded', () => {
             color: var(--text-color);
         }
 
+        .form-like-container {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 15px;
+            margin-bottom: 20px;
+            background: var(--card-bg);
+            padding: 20px;
+            border-radius: 8px;
+        }
+
     `;
     const styleSheet = document.createElement("style");
     styleSheet.innerText = customSelectStyles;
@@ -193,8 +203,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (users.length === 0) {
         users.push({
             id: 'admin',
-            username: 'eissa',
-            password: '218@@!',
+            username: 'admin',
+            password: 'admin123',
             isDefaultAdmin: true, // To prevent deletion
             permissions: {} // Admin has all permissions implicitly
         });
@@ -203,7 +213,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initialize counters for sequential IDs if they don't exist
     labSettings.nextTestId = labSettings.nextTestId || 1;
-    labSettings.nextResultId = labSettings.nextResultId || 1;
 
     // Role-based access control
     let currentUser = null;
@@ -247,6 +256,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const inventoryForm = document.getElementById('inventoryForm');
     const resultForm = document.getElementById('resultForm');
     const testDefinitionForm = document.getElementById('testDefinitionForm');
+    const resultPatientSelectorContainer = document.getElementById('resultPatientSelectorContainer');
     const settingsForm = document.getElementById('settingsForm');
     const archiveDaysInput = document.getElementById('archiveDays');
     const userForm = document.getElementById('userForm');
@@ -456,6 +466,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return `
             <tr>
                 <td>${t.id}</td>
+                <td>${patient ? (patient.nationalId || 'غير مسجل') : 'مريض محذوف'}</td>
                 <td>${patient ? patient.name : 'مريض محذوف'}</td>
                 <td>${t.type}</td>
                 <td>${new Date(t.date).toLocaleDateString()}</td>
@@ -478,6 +489,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <tr>
                 <td>${r.id}</td>
                 <td>${patient ? patient.name : 'مريض محذوف'}</td>
+                <td>${patient ? (patient.nationalId || 'غير مسجل') : 'غير متوفر'}</td>
                 <td>${test ? test.type : 'فحص محذوف'}</td>
                 <td title="${r.notes || ''}">${(r.notes || '').substring(0, 20)}${ (r.notes || '').length > 20 ? '...' : ''}</td>
                 <td>${new Date(r.date).toLocaleDateString()}</td>
@@ -610,6 +622,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const renderTestRow = (test) => {
             const patient = patients.find(p => p.id === test.patientId);
             return `<tr>
+                <td>${test.id}</td>
+                <td>${patient ? (patient.nationalId || 'غير مسجل') : 'غير متوفر'}</td>
                 <td>${patient ? patient.name : 'مريض محذوف'}</td>
                 <td>${test.type}</td>
             </tr>`;
@@ -720,6 +734,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 populateUserPermissions();
             }
 
+            if (document.querySelector('.content-section.active')?.id !== 'results') {
+                resetResultWorkflow();
+            }
+
             renderAll();
         });
     });
@@ -738,24 +756,76 @@ document.addEventListener('DOMContentLoaded', () => {
         testPatientIdSelect.replaceWith(customSelectContainer);
     
         const patientSelectionDisplay = document.getElementById('patientSelectionDisplay');
-        patientSelectionDisplay.addEventListener('click', () => openPatientSelectionModal());
+        patientSelectionDisplay.addEventListener('click', () => {
+            openPatientSelectionModal((patient) => {
+                document.getElementById('selectedPatientIdForTest').value = patient.id;
+                patientSelectionDisplay.textContent = `${patient.name} (${patient.nationalId || patient.id})`;
+                patientSelectionDisplay.classList.add('selected');
+            });
+        });
     }
 
-    // Modify the result form's test selection to use a modal
-    const resultTestIdSelect = document.getElementById('resultTestId');
-    if (resultTestIdSelect) {
-        const customSelectContainer = document.createElement('div');
-        customSelectContainer.className = 'custom-select-container';
-        customSelectContainer.innerHTML = `
-            <input type="hidden" id="selectedTestIdForResult">
-            <div id="testSelectionDisplay" class="custom-select-display" tabindex="0">اختر فحصاً لإضافة نتيجة</div>
-        `;
+    // --- Result Page Workflow ---
+    const resetResultWorkflow = () => {
+        if (resultForm) resultForm.style.display = 'none';
+        if (resultPatientSelectorContainer) resultPatientSelectorContainer.style.display = 'grid';
         
-        // The select is inside a div with class 'form-group'
-        resultTestIdSelect.parentElement.replaceWith(customSelectContainer);
-    
+        const resultPatientDisplay = document.getElementById('resultPatientSelectionDisplay');
+        if (resultPatientDisplay) {
+            resultPatientDisplay.textContent = 'اختر مريضاً لعرض فحوصاته المعلقة';
+            resultPatientDisplay.classList.remove('selected');
+        }
+
         const testSelectionDisplay = document.getElementById('testSelectionDisplay');
-        testSelectionDisplay.addEventListener('click', () => openTestSelectionModal());
+        if(testSelectionDisplay) {
+            testSelectionDisplay.textContent = 'اختر فحصاً لإضافة نتيجة';
+            testSelectionDisplay.classList.remove('selected');
+        }
+
+        if(resultForm) resultForm.reset();
+        resultParametersContainer.innerHTML = '';
+        const infoContainer = document.getElementById('result-info-container');
+        if(infoContainer) infoContainer.style.display = 'none';
+
+        document.getElementById('resultSelectedPatientId').value = '';
+        const selectedTestIdInput = document.getElementById('selectedTestIdForResult');
+        if(selectedTestIdInput) selectedTestIdInput.value = '';
+    };
+
+    const resultPatientSelectionDisplay = document.getElementById('resultPatientSelectionDisplay');
+    if (resultPatientSelectionDisplay) {
+        resultPatientSelectionDisplay.addEventListener('click', () => {
+            openPatientSelectionModal((patient) => {
+                document.getElementById('resultSelectedPatientId').value = patient.id;
+                resultPatientSelectorContainer.style.display = 'none';
+                resultForm.style.display = 'grid';
+                openTestSelectionModal(patient.id);
+            });
+        });
+    }
+
+    const resultTestSelectorPlaceholder = document.getElementById('resultTestSelectorPlaceholder');
+    if (resultTestSelectorPlaceholder) {
+        const testSelectorHtml = `
+            <div class="custom-select-container">
+                <input type="hidden" id="selectedTestIdForResult">
+                <div id="testSelectionDisplay" class="custom-select-display" tabindex="0">اختر فحصاً لإضافة نتيجة</div>
+            </div>
+            <div id="result-info-container" class="sub-form-container" style="display: none; grid-template-columns: 1fr 1fr; padding: 10px; background-color: var(--secondary-color);"></div>
+        `;
+        resultTestSelectorPlaceholder.innerHTML = testSelectorHtml;
+
+        document.getElementById('testSelectionDisplay').addEventListener('click', () => {
+            const patientId = document.getElementById('resultSelectedPatientId').value;
+            if (patientId) {
+                openTestSelectionModal(patientId);
+            }
+        });
+    }
+    
+    const changePatientBtn = document.getElementById('changePatientBtn');
+    if(changePatientBtn) {
+        changePatientBtn.addEventListener('click', resetResultWorkflow);
     }
 
     // --- FORM SUBMISSIONS ---
@@ -944,6 +1014,10 @@ document.addEventListener('DOMContentLoaded', () => {
     resultForm.addEventListener('submit', e => {
         e.preventDefault();
         const testId = parseInt(document.getElementById('selectedTestIdForResult').value);
+        if (!testId) {
+            alert('الرجاء اختيار فحص أولاً.');
+            return;
+        }
         const test = tests.find(t => t.id === testId);
         if (!test) return;
         const testDef = testDefinitions.find(def => def.name === test.type);
@@ -994,8 +1068,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         results.push({
-            id: labSettings.nextResultId++,
-            testId: testId,
+            id: testId, // Use the test ID as the result ID
+            testId: testId, // The testId is still needed for linking
             parameterResults: parameterResults,
             notes: document.getElementById('resultNotes').value,
             date: new Date(),
@@ -1005,14 +1079,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         saveData();
         renderAll();
-        resultForm.reset();
-        resultParametersContainer.innerHTML = '';
-        const testSelectionDisplay = document.getElementById('testSelectionDisplay');
-        if (testSelectionDisplay) {
-            testSelectionDisplay.textContent = 'اختر فحصاً لإضافة نتيجة';
-            testSelectionDisplay.classList.remove('selected');
-            document.getElementById('selectedTestIdForResult').value = '';
-        }
+        resetResultWorkflow();
         alert('تم تسجيل النتيجة بنجاح، وأصبح الفحص مكتملاً.');
     });
 
@@ -1145,7 +1212,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- PATIENT SELECTION MODAL LOGIC ---
-    const openPatientSelectionModal = () => {
+    let onPatientSelectCallback = null;
+
+    const openPatientSelectionModal = (callback) => {
+        onPatientSelectCallback = callback;
         patientSelectionSearch.value = '';
         renderPatientListForModal();
         patientSelectionModal.style.display = 'flex';
@@ -1154,6 +1224,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const closePatientSelectionModal = () => {
         patientSelectionModal.style.display = 'none';
+        onPatientSelectCallback = null;
     };
 
     const renderPatientListForModal = (searchTerm = '') => {
@@ -1196,22 +1267,17 @@ document.addEventListener('DOMContentLoaded', () => {
         if (item) {
             const patientId = item.dataset.id;
             const patient = patients.find(p => p.id === patientId);
-            if (patient) {
-                document.getElementById('selectedPatientIdForTest').value = patient.id;
-                const patientSelectionDisplay = document.getElementById('patientSelectionDisplay');
-                if (patientSelectionDisplay) {
-                    patientSelectionDisplay.textContent = `${patient.name} (${patient.nationalId || patient.id})`;
-                    patientSelectionDisplay.classList.add('selected');
-                }
+            if (patient && typeof onPatientSelectCallback === 'function') {
+                onPatientSelectCallback(patient);
             }
             closePatientSelectionModal();
         }
     });
 
     // --- TEST SELECTION MODAL LOGIC ---
-    const openTestSelectionModal = () => {
+    const openTestSelectionModal = (patientId) => {
         testSelectionSearch.value = '';
-        renderTestListForModal();
+        renderTestListForModal('', patientId);
         testSelectionModal.style.display = 'flex';
         testSelectionSearch.focus();
     };
@@ -1220,9 +1286,13 @@ document.addEventListener('DOMContentLoaded', () => {
         testSelectionModal.style.display = 'none';
     };
 
-    const renderTestListForModal = (searchTerm = '') => {
+    const renderTestListForModal = (searchTerm = '', patientId = null) => {
         const lowerCaseSearchTerm = searchTerm.toLowerCase();
-        const pendingTests = tests.filter(t => t.status === 'معلق');
+        let pendingTests = tests.filter(t => t.status === 'معلق');
+
+        if (patientId) {
+            pendingTests = pendingTests.filter(t => t.patientId === patientId);
+        }
 
         const filteredTests = pendingTests.filter(t => {
             const patient = patients.find(p => p.id === t.patientId);
@@ -1260,7 +1330,7 @@ document.addEventListener('DOMContentLoaded', () => {
         `}).join('');
 
         if (filteredTests.length === 0) {
-            testSelectionList.innerHTML = '<p class="no-results">لا يوجد فحوصات معلقة مطابقة للبحث.</p>';
+            testSelectionList.innerHTML = `<p class="no-results">${patientId ? 'لا توجد فحوصات معلقة لهذا المريض.' : 'لا يوجد فحوصات معلقة مطابقة للبحث.'}</p>`;
         } else {
             testSelectionList.innerHTML = headerHtml + listHtml;
         }
@@ -1268,7 +1338,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Event listeners for the new modal
     closeTestSelectionModalBtn.addEventListener('click', closeTestSelectionModal);
-    testSelectionSearch.addEventListener('keyup', () => renderTestListForModal(testSelectionSearch.value));
+    testSelectionSearch.addEventListener('keyup', () => {
+        const patientId = document.getElementById('resultSelectedPatientId').value;
+        renderTestListForModal(testSelectionSearch.value, patientId);
+    });
 
     testSelectionList.addEventListener('click', (e) => {
         const item = e.target.closest('.test-select-item');
@@ -1284,6 +1357,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     testSelectionDisplay.classList.add('selected');
                 }
                 populateResultParameters(test.id);
+                const infoContainer = document.getElementById('result-info-container');
+                if (infoContainer) {
+                    infoContainer.innerHTML = `
+                        <div><strong>رقم العينة:</strong> <span>${test.id}</span></div>
+                        <div><strong>كود المريض:</strong> <span>${patient.nationalId || 'غير مسجل'}</span></div>
+                    `;
+                    infoContainer.style.display = 'grid';
+                }
             }
             closeTestSelectionModal();
         }
@@ -1368,6 +1449,11 @@ document.addEventListener('DOMContentLoaded', () => {
             return mostRecentDate < cutoffDate;
         }).map(p => p.id);
 
+        // Collect all test IDs that belong to the patients being archived.
+        // This is crucial for correctly cleaning up the results array later.
+        const testIdsToArchive = tests
+            .filter(t => patientIdsToArchive.includes(t.patientId))
+            .map(t => t.id);
 
         if (patientIdsToArchive.length > 0) {
             patientIdsToArchive.forEach(patientId => {
@@ -1388,7 +1474,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             patients = patients.filter(p => !patientIdsToArchive.includes(p.id));
             tests = tests.filter(t => !patientIdsToArchive.includes(t.patientId));
-            results = results.filter(r => !tests.find(t => t.id === r.testId && patientIdsToArchive.includes(t.patientId)));
+            results = results.filter(r => !testIdsToArchive.includes(r.testId));
             
             saveData();
             renderAll();
@@ -2018,7 +2104,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div><strong>العمر:</strong> <span>${patient.age}</span></div>
                 <div><strong>الجنس:</strong> <span>${patient.gender}</span></div>
                 <div><strong>كود المريض:</strong> <span>${patient.nationalId || 'غير مسجل'}</span></div>
-                <div><strong>رقم السجل:</strong> <span>${patient.record || 'غير مسجل'}</span></div>
+                <div><strong>الهاتف:</strong> <span>${patient.phone || 'لا يوجد'}</span></div>
+                <div><strong>أرقام العينات:</strong> <span>${testsForVisit.map(t => t.id).join(', ')}</span></div>
                 <div><strong>تاريخ الطلب:</strong> <span>${visitDate}</span></div>
                 <div><strong>تاريخ النتيجة:</strong> <span>${resultDate}</span></div>
             </div>
@@ -2133,7 +2220,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div><strong>العمر:</strong> <span>${patient.age}</span></div>
                 <div><strong>الجنس:</strong> <span>${patient.gender}</span></div>
                 <div><strong>كود المريض:</strong> <span>${patient.nationalId || 'غير مسجل'}</span></div>
-                <div><strong>رقم السجل:</strong> <span>${patient.record || 'غير مسجل'}</span></div>
+                <div><strong>الهاتف:</strong> <span>${patient.phone || 'لا يوجد'}</span></div>
+                <div><strong>أرقام العينات:</strong> <span>${resultIds.join(', ')}</span></div>
             </div>
         `;
 
@@ -2465,12 +2553,18 @@ document.addEventListener('DOMContentLoaded', () => {
             patients: d => d.filter(p => p.name.toLowerCase().includes(term) || (p.phone || '').includes(term) || (p.nationalId && p.nationalId.toLowerCase().includes(term))),
             tests: d => d.filter(t => {
                 const p = patients.find(p => p.id === t.patientId);
-                return t.type.toLowerCase().includes(term) || (p && p.name.toLowerCase().includes(term));
+                return String(t.id).includes(term) ||
+                       t.type.toLowerCase().includes(term) ||
+                       (p && p.name.toLowerCase().includes(term)) ||
+                       (p && p.nationalId && p.nationalId.toLowerCase().includes(term));
             }),
             results: d => d.filter(r => {
                 const test = tests.find(t => t.id === r.testId);
                 const patient = test ? patients.find(p => p.id === test.patientId) : null;
-                return (test && test.type.toLowerCase().includes(term)) || (patient && patient.name.toLowerCase().includes(term));
+                return String(r.id).includes(term) || // Search by Sample ID (which is r.id)
+                       (test && test.type.toLowerCase().includes(term)) ||
+                       (patient && patient.name.toLowerCase().includes(term)) ||
+                       (patient && patient.nationalId && patient.nationalId.toLowerCase().includes(term));
             }),
             consumed: d => d.filter(log => log.materialName.toLowerCase().includes(term) || log.testType.toLowerCase().includes(term) || String(log.testId).includes(term)),
             inventory: d => d.filter(i => i.name.toLowerCase().includes(term)),
@@ -2605,7 +2699,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     exportTestsBtn.addEventListener('click', () => {
-        const headers = ["معرف الفحص", "اسم المريض", "نوع الفحص", "تاريخ الطلب", "الحالة"];
+        const headers = ["رقم العينة", "اسم المريض", "نوع الفحص", "تاريخ الطلب", "الحالة"];
         const dataRows = tests.map(t => {
             const patient = patients.find(p => p.id === t.patientId);
             return [
@@ -2631,7 +2725,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     exportConsumedBtn.addEventListener('click', () => {
-        const headers = ["اسم المادة", "الكمية المستهلكة", "الوحدة", "نوع الفحص", "معرف الفحص", "تاريخ الاستهلاك"];
+        const headers = ["اسم المادة", "الكمية المستهلكة", "الوحدة", "نوع الفحص", "رقم العينة", "تاريخ الاستهلاك"];
         const dataRows = consumedLog.map(log => [
             sanitizeCsvField(log.materialName), sanitizeCsvField(log.quantity), sanitizeCsvField(log.unit),
             sanitizeCsvField(log.testType), sanitizeCsvField(log.testId), sanitizeCsvField(new Date(log.date).toLocaleString('ar-EG'))
@@ -2640,7 +2734,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     exportResultsBtn.addEventListener('click', () => {
-        const headers = ["معرف النتيجة", "معرف الفحص", "اسم المريض", "نوع الفحص", "تفاصيل النتيجة", "ملاحظات", "تاريخ الإدخال"];
+        const headers = ["رقم العينة", "اسم المريض", "نوع الفحص", "تفاصيل النتيجة", "ملاحظات", "تاريخ الإدخال"];
         const dataRows = results.map(r => {
             const test = tests.find(t => t.id === r.testId);
             const patient = test ? patients.find(p => p.id === test.patientId) : null;
@@ -2648,7 +2742,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const testType = test ? test.type : 'غير متوفر';
             const resultDate = new Date(r.date).toLocaleDateString();
             return [
-                sanitizeCsvField(r.id), sanitizeCsvField(r.testId), sanitizeCsvField(patientName),
+                sanitizeCsvField(r.id), // This is now the Sample ID
+                sanitizeCsvField(patientName),
                 sanitizeCsvField(testType), sanitizeCsvField((r.parameterResults || []).map(p => `${p.name}: ${p.value}`).join('; ')),
                 sanitizeCsvField(r.notes), sanitizeCsvField(resultDate)
             ];
@@ -2703,4 +2798,4 @@ document.addEventListener('DOMContentLoaded', () => {
 
     checkLogin();
 });
-
+ 
